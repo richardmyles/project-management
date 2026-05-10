@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Personal data — not tracked
+data/
+config.json
+
+# Build artifacts
+dist/
+build/
+
+# Temp uploads
+uploads/
+
+# Claude Code local settings
+.claude/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
