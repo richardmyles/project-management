@@ -4,7 +4,7 @@
 
 A self-contained, file-based project management tool. Tracks projects, milestones, risks, dependencies, goals, and progress reports. Data persists as JSON files in `data/`. Designed to be shared with colleagues — each user personalizes it on first run via a setup modal.
 
-**Location:** `C:\Users\L075876\OneDrive - [REDACTED]\Documents\Coding\Project Management\`
+**Location:** *(your local clone path)*
 
 ## Architecture
 
