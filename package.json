@@ -1,7 +1,7 @@
 {
-  "name": "richards-projects",
+  "name": "my-projects",
   "version": "1.0.0",
-  "description": "Richard's Projects — LP1 TSMS project management, goals tracking, and progress reporting",
+  "description": "Personal project management tool — tracks projects, milestones, goals, risks, and progress reports",
   "main": "electron/main.js",
   "scripts": {
     "start": "node server.js",
@@ -9,7 +9,7 @@
     "dist": "electron-builder --win --x64",
     "import-goals": "node scripts/import-goals.js"
   },
-  "author": "Richard — LP1 TSMS",
+  "author": "",
   "private": true,
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
@@ -26,8 +26,8 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.richards.projects",
-    "productName": "Richard's Projects",
+    "appId": "com.myprojects.app",
+    "productName": "My Projects",
     "directories": {
       "output": "dist"
     },
@@ -61,10 +61,10 @@
       "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Richard's Projects"
+      "shortcutName": "My Projects"
     },
     "portable": {
-      "artifactName": "RichardsProjects-portable.exe"
+      "artifactName": "MyProjects-portable.exe"
     }
   }
 }

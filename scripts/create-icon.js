@@ -1,4 +1,4 @@
-// Generates build/icon.ico and electron/tray.png — blue folder icon with LP1 branding
+// Generates build/icon.ico and electron/tray.png — blue folder icon
 const fs   = require("fs");
 const path = require("path");
 const zlib = require("zlib");

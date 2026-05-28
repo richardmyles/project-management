@@ -23,8 +23,8 @@ const RESOLVED_FILE = path.join(BRIEFING_DIR, "resolved.json");
 const NOTES_FILE = path.join(DATA, "notes.json");
 const PROFILE_FILE = path.join(DATA, "profile.json");
 const NOTES_HTML_DIR = path.join(DATA, "notes-html");
-const OBSIDIAN_VAULT = process.env.OBSIDIAN_VAULT || "C:\\Dev\\second-brain";
-const OBSIDIAN_PROFILE_FILE = path.join(OBSIDIAN_VAULT, "_claude", "artifacts", "profile.md");
+const OBSIDIAN_VAULT = process.env.OBSIDIAN_VAULT || "";
+const OBSIDIAN_PROFILE_FILE = OBSIDIAN_VAULT ? path.join(OBSIDIAN_VAULT, "_claude", "artifacts", "profile.md") : null;
 
 [DATA, GOALS_DIR, ARCHIVE_DIR, REPORTS_DIR, HISTORY_DIR, DRAFTS_DIR, UPLOADS_DIR, BRIEFING_DIR, NOTES_HTML_DIR].forEach(d => {
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
@@ -1022,30 +1022,38 @@ function saveMemory(content) {
   fs.writeFileSync(MEMORY_FILE, content, "utf8");
 }
 
-// ═══ CLAUDE AI (Lilly SSO via lilly-code token) ═══
-const LILLY_BASE_URL = "https://lilly-code-server.api.gateway.llm.lilly.com";
-const LILLY_MODEL = "sonnet-latest";
+// ═══ CLAUDE AI ═══
+const AI_BASE_URL = process.env.AI_BASE_URL || "";
+const AI_MODEL = process.env.AI_MODEL || "claude-sonnet-4-5";
 let _tokenCache = { value: null, expiresAt: 0 };
 
-function getLillyToken() {
+function getAIToken() {
   const now = Date.now();
   if (_tokenCache.value && _tokenCache.expiresAt > now + 30000) return _tokenCache.value;
-  try {
-    const { execSync } = require("child_process");
-    const token = execSync("lilly-code token", { timeout: 10000, shell: true }).toString().trim();
-    if (!token) throw new Error("empty token");
-    _tokenCache = { value: token, expiresAt: now + 270000 }; // cache 4.5 min (TTL is 5 min)
-    return token;
-  } catch (e) {
-    throw new Error("Could not get Lilly token — make sure you are signed in to Lilly Code: " + e.message);
+  // If a CLI token command is configured, use it; otherwise fall back to AI_API_KEY env var
+  const tokenCmd = process.env.AI_TOKEN_CMD;
+  if (tokenCmd) {
+    try {
+      const { execSync } = require("child_process");
+      const token = execSync(tokenCmd, { timeout: 10000, shell: true }).toString().trim();
+      if (!token) throw new Error("empty token");
+    _tokenCache = { value: token, expiresAt: now + 270000 };
+      return token;
+    } catch (e) {
+      throw new Error("Could not get AI token via AI_TOKEN_CMD: " + e.message);
+    }
   }
+  // Fall back to static API key
+  const key = process.env.AI_API_KEY || process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error("No AI credentials configured. Set AI_API_KEY or AI_TOKEN_CMD in your environment.");
+  return key;
 }
 
 app.post("/api/claude", async (req, res) => {
   try {
-    const apiKey = getLillyToken();
+    const apiKey = getAIToken();
     const Anthropic = require("@anthropic-ai/sdk");
-    const client = new Anthropic({ authToken: apiKey, baseURL: LILLY_BASE_URL });
+    const client = new Anthropic({ apiKey, ...(AI_BASE_URL ? { baseURL: AI_BASE_URL } : {}) });
     const { prompt } = req.body;
     if (!prompt) return res.status(400).json({ error: "prompt required" });
     const mem = getMemory();
@@ -1056,7 +1064,7 @@ app.post("/api/claude", async (req, res) => {
         ]
       : prompt;
     const message = await client.messages.create({
-      model: LILLY_MODEL,
+      model: AI_MODEL,
       max_tokens: 2048,
       messages: [{ role: "user", content: userContent }]
     });
@@ -1090,9 +1098,9 @@ app.patch("/api/profile", (req, res) => {
 
 app.post("/api/profile/generate", async (req, res) => {
   try {
-    const apiKey = getLillyToken();
+    const apiKey = getAIToken();
     const Anthropic = require("@anthropic-ai/sdk");
-    const client = new Anthropic({ authToken: apiKey, baseURL: LILLY_BASE_URL });
+    const client = new Anthropic({ apiKey, ...(AI_BASE_URL ? { baseURL: AI_BASE_URL } : {}) });
     const { notes } = readJSON(NOTES_FILE, { notes: [] });
     if (!notes.length) return res.json({ ok: false, error: "No notes to analyze" });
 
@@ -1121,7 +1129,7 @@ NOTES CORPUS (${notes.length} notes):
 ${corpus}`;
 
     const message = await client.messages.create({
-      model: LILLY_MODEL,
+      model: AI_MODEL,
       max_tokens: 3000,
       messages: [{ role: "user", content: prompt }]
     });
@@ -1234,11 +1242,11 @@ If a milestone's projectRef names a project not in the existing list, include th
       ...imageBlocks,
     );
 
-    const apiKey = getLillyToken();
+    const apiKey = getAIToken();
     const Anthropic = require("@anthropic-ai/sdk");
-    const client = new Anthropic({ authToken: apiKey, baseURL: LILLY_BASE_URL });
+    const client = new Anthropic({ apiKey, ...(AI_BASE_URL ? { baseURL: AI_BASE_URL } : {}) });
     const message = await client.messages.create({
-      model: LILLY_MODEL, max_tokens: 4096,
+      model: AI_MODEL, max_tokens: 4096,
       messages: [{ role: "user", content: userContent }],
     });
 
@@ -1339,11 +1347,11 @@ If a milestone's projectRef names a project not in the existing list, include th
     if (mem) userContent.push({ type: "text", text: `Project context and memory:\n\n${mem}`, cache_control: { type: "ephemeral" } });
     userContent.push({ type: "text", text: systemText + "\n\nNote: " + (note.title || "Untitled") + "\n\n" + text });
 
-    const apiKey = getLillyToken();
+    const apiKey = getAIToken();
     const Anthropic = require("@anthropic-ai/sdk");
-    const client = new Anthropic({ authToken: apiKey, baseURL: LILLY_BASE_URL });
+    const client = new Anthropic({ apiKey, ...(AI_BASE_URL ? { baseURL: AI_BASE_URL } : {}) });
     const message = await client.messages.create({
-      model: LILLY_MODEL, max_tokens: 4096,
+      model: AI_MODEL, max_tokens: 4096,
       messages: [{ role: "user", content: userContent }],
     });
 
@@ -1478,11 +1486,11 @@ Rewrite the memory file to be a concise, accurate reference (max 800 words). Inc
 
 Write in clear, factual prose. No markdown headers needed — plain paragraphs are fine.`;
 
-    const apiKey = getLillyToken();
+    const apiKey = getAIToken();
     const Anthropic = require("@anthropic-ai/sdk");
-    const client = new Anthropic({ authToken: apiKey, baseURL: LILLY_BASE_URL });
+    const client = new Anthropic({ apiKey, ...(AI_BASE_URL ? { baseURL: AI_BASE_URL } : {}) });
     const message = await client.messages.create({
-      model: LILLY_MODEL, max_tokens: 1200,
+      model: AI_MODEL, max_tokens: 1200,
       messages: [{ role: "user", content: refreshPrompt }],
     });
     const newMemory = message.content[0].text.trim();
@@ -1500,10 +1508,10 @@ function profileToMarkdown(profile) {
   const dt = new Date().toISOString().slice(0, 10);
   lines.push("---");
   lines.push(`updated: ${dt}`);
-  lines.push("tags: [profile, richard-myles, work]");
+  lines.push("tags: [profile, work]");
   lines.push("---");
   lines.push("");
-  lines.push("# Richard Myles — Profile");
+  lines.push(`# ${cfg.name || "My"} — Profile`);
   lines.push("");
   if (profile.summary) { lines.push("## Summary"); lines.push(""); lines.push(profile.summary); lines.push(""); }
   if (profile.role) { lines.push("## Role"); lines.push(""); lines.push(profile.role); lines.push(""); }
@@ -1565,9 +1573,9 @@ app.post("/api/obsidian/pull", async (req, res) => {
     if (!sections.length) return res.json({ ok: true, message: "No relevant vault files found", merged: null });
 
     const currentProfile = readJSON(PROFILE_FILE, {});
-    const apiKey = getLillyToken();
+    const apiKey = getAIToken();
     const Anthropic = require("@anthropic-ai/sdk");
-    const client = new Anthropic({ authToken: apiKey, baseURL: LILLY_BASE_URL });
+    const client = new Anthropic({ apiKey, ...(AI_BASE_URL ? { baseURL: AI_BASE_URL } : {}) });
 
     // Ask Claude to extract ONLY new additions — small output, easy to parse reliably
     const existingSummary = {
@@ -1603,7 +1611,7 @@ Return JSON with ONLY the new items to add (omit any array that has nothing new)
 }`;
 
     const message = await client.messages.create({
-      model: LILLY_MODEL, max_tokens: 1500,
+      model: AI_MODEL, max_tokens: 1500,
       messages: [{ role: "user", content: prompt }],
     });
     const raw = message.content[0].text;
@@ -1686,8 +1694,7 @@ app.post("/api/briefing/run", (req, res) => {
   // Embed the skill instructions directly so Claude doesn't need the skill registered
   let skillBody = null;
   const cfg = getConfig();
-  const skillPath = cfg.dailyBriefingSkillPath ||
-    path.join("C:", "Dev", "packages", "claude_skills", "development", "daily-agenda.skill");
+  const skillPath = cfg.dailyBriefingSkillPath || null;
   try {
     const AdmZip = require("adm-zip");
     const zip = new AdmZip(skillPath);
