@@ -1,19 +1,20 @@
 {
-  "name": "my-projects",
+  "name": "richards-projects",
   "version": "1.0.0",
-  "description": "Personal project management — goals tracking and progress reporting",
+  "description": "Richard's Projects — LP1 TSMS project management, goals tracking, and progress reporting",
   "main": "electron/main.js",
   "scripts": {
     "start": "node server.js",
     "electron": "electron .",
-    "create-icon": "node scripts/create-icon.js",
-    "dist": "node scripts/create-icon.js && node scripts/copy-skill.js && electron-builder --win --x64"
+    "dist": "electron-builder --win --x64",
+    "import-goals": "node scripts/import-goals.js"
   },
-  "author": "My Projects",
+  "author": "Richard — LP1 TSMS",
   "private": true,
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
     "adm-zip": "^0.5.16",
+    "cheerio": "^1.2.0",
     "docx": "^9.6.1",
     "express": "^4.21.0",
     "mammoth": "^1.8.0",
@@ -25,9 +26,8 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.myprojects.app",
-    "productName": "My Projects",
-    "icon": "build/icon.ico",
+    "appId": "com.richards.projects",
+    "productName": "Richard's Projects",
     "directories": {
       "output": "dist"
     },
@@ -42,8 +42,18 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {
@@ -51,10 +61,10 @@
       "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "My Projects"
+      "shortcutName": "Richard's Projects"
     },
     "portable": {
-      "artifactName": "MyProjects-portable.exe"
+      "artifactName": "RichardsProjects-portable.exe"
     }
   }
 }
