@@ -1,10 +1,9 @@
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
-const multer = require("multer");
 
 const app = express();
-const PORT = process.env.PORT || 3201;
+const PORT = process.env.PORT || 3200;
 
 const ROOT = process.env.APP_DATA_PATH || __dirname;
 const DATA = path.join(ROOT, "data");
@@ -22,13 +21,14 @@ const BRIEFING_DIR = path.join(DATA, "briefing");
 const BRIEFING_FILE = path.join(BRIEFING_DIR, "latest.json");
 const RESOLVED_FILE = path.join(BRIEFING_DIR, "resolved.json");
 const NOTES_FILE = path.join(DATA, "notes.json");
+const PROFILE_FILE = path.join(DATA, "profile.json");
 const NOTES_HTML_DIR = path.join(DATA, "notes-html");
+const OBSIDIAN_VAULT = process.env.OBSIDIAN_VAULT || "C:\\Dev\\second-brain";
+const OBSIDIAN_PROFILE_FILE = path.join(OBSIDIAN_VAULT, "_claude", "artifacts", "profile.md");
 
 [DATA, GOALS_DIR, ARCHIVE_DIR, REPORTS_DIR, HISTORY_DIR, DRAFTS_DIR, UPLOADS_DIR, BRIEFING_DIR, NOTES_HTML_DIR].forEach(d => {
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
 });
-
-const upload = multer({ dest: UPLOADS_DIR, limits: { fileSize: 250 * 1024 * 1024 } });
 
 let _upload = null;
 function getUpload() {
@@ -183,6 +183,32 @@ app.post("/api/goals/import", (req, res) => {
 app.get("/api/goals/map", (req, res) => { res.json(readJSON(GOAL_MAP_FILE, { lastUpdated: null, mappings: [] })); });
 app.put("/api/goals/map", (req, res) => { writeJSON(GOAL_MAP_FILE, { ...req.body, lastUpdated: new Date().toISOString() }); res.json({ ok: true }); });
 
+// Goal categories per year
+app.get("/api/goals/categories/:year", (req, res) => {
+  const year = parseInt(req.params.year);
+  if (isNaN(year)) return res.status(400).json({ error: "invalid year" });
+  const fp = path.join(GOALS_DIR, `categories_${year}.json`);
+  let cats = readJSON(fp, null);
+  if (!cats) {
+    const goalFile = path.join(GOALS_DIR, `${year}_goals.json`);
+    const data = readJSON(goalFile, null);
+    const catSet = new Set();
+    if (data) data.goals.forEach(g => { if (g.category) catSet.add(g.category); });
+    cats = [...catSet].sort();
+    writeJSON(fp, cats);
+  }
+  res.json(cats);
+});
+
+app.put("/api/goals/categories/:year", (req, res) => {
+  const year = parseInt(req.params.year);
+  if (isNaN(year)) return res.status(400).json({ error: "invalid year" });
+  const cats = req.body;
+  if (!Array.isArray(cats)) return res.status(400).json({ error: "expected array" });
+  writeJSON(path.join(GOALS_DIR, `categories_${year}.json`), cats.filter(c => typeof c === "string" && c.trim()));
+  res.json({ ok: true });
+});
+
 // Update a single goal's status or quarterly notes
 app.patch("/api/goals/:goalId", (req, res) => {
   const { goalId } = req.params;
@@ -217,7 +243,7 @@ app.post("/api/goals", (req, res) => {
 });
 
 // ═══ DOCX GOALS UPLOAD ═══
-app.post("/api/goals/upload-docx", upload.single("goalsFile"), async (req, res) => {
+app.post("/api/goals/upload-docx", (req, res, next) => getUpload().single("goalsFile")(req, res, next), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   try {
     const mammoth = require("mammoth");
@@ -261,16 +287,19 @@ function parseGoalsFromHtml(html) {
   const goals = [];
   let currentCategory = "General";
   let gIndex = 0;
+  const isOurExport = html.includes("_GOALS_EXPORT_V2_");
 
   const clean = s => s.replace(/<[^>]+>/g, "")
     .replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">")
     .replace(/&nbsp;/g," ").replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(+n))
     .replace(/\s+/g," ").trim();
 
-  const skipLabel = s => /^(organization\s+alignment|supporting\s+activit|measure|success\s+criteria|alignment|due\s+date|status)\s*[:;]?\s*$/i.test(s);
+  const skipLabel = s => {
+    if (/^(organization\s+alignment|supporting\s+activit|measure|success\s+criteria|alignment|due\s+date|status)\s*[:;]?\s*$/i.test(s)) return true;
+    if (/^(status|due\s+date?|q[1-4]|org\.?\s+alignment|quarterly\s+notes?)\s*:/i.test(s)) return true;
+    return false;
+  };
 
-  // Preprocess: replace <p> tags inside <li> with NUL separator so the outer split
-  // doesn't fragment list items (mammoth always wraps <li> content in <p> tags).
   const prep = html.replace(/<li([^>]*)>((?:(?!<li|<\/li>)[\s\S])*)<\/li>/gi, (_, attrs, inner) => {
     const flat = inner.replace(/<p[^>]*>/gi, "").replace(/<\/p>/gi, "\x00");
     return "<li" + attrs + ">" + flat + "</li>";
@@ -279,28 +308,44 @@ function parseGoalsFromHtml(html) {
   const chunks = prep.split(/(?=<(?:h[1-6]|p|ul|ol)\b)/i).filter(s => s.trim());
 
   for (const chunk of chunks) {
-    // Heading → new category
     const hm = chunk.match(/^<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/i);
     if (hm) {
       const text = clean(hm[2]);
-      if (text) currentCategory = text;
+      if (text && !/^\d{4}\s.*(goals?|annual)/i.test(text)) currentCategory = text;
       continue;
     }
 
-    // Paragraph (only top-level; <p> inside <li> was already flattened above)
     const pm = chunk.match(/^<p[^>]*>([\s\S]*?)<\/p>/i);
     if (pm) {
       const inner = pm[1];
       const text = clean(inner);
       if (!text || text.length < 3 || /^page \d+/i.test(text) || skipLabel(text)) continue;
+      if (text.includes("_GOALS_EXPORT_V2_")) continue;
 
-      // Bold-only short paragraph → treat as a category name
       const isBold = /^<(?:strong|b)[^>]*>[\s\S]*?<\/(?:strong|b)>$/i.test(inner.trim());
+
+      if (isOurExport) {
+        // In our exports: categories come from <h1> tags, NOT bold <p>.
+        // Bold <p> = new goal; plain <p> after a goal = description free text.
+        // Skip preamble (before first real category heading has been seen).
+        if (isBold && currentCategory && currentCategory !== "General") {
+          gIndex++;
+          goals.push({ id:"g-"+gIndex, category:currentCategory, text, description:"", orgAlignment:"", subItems:[], linkedProjects:[], _fromPara:true });
+        } else {
+          const lastGoal = goals.length ? goals[goals.length - 1] : null;
+          if (lastGoal && !skipLabel(text)) {
+            if (lastGoal.description) lastGoal.description += '\n' + text;
+            else lastGoal.description = text;
+          }
+        }
+        continue;
+      }
+
+      // Non-export: short bold paragraph heuristic for category headings
       if (isBold && text.split(/\s+/).length <= 8) { currentCategory = text; continue; }
 
       const lastGoal = goals.length ? goals[goals.length - 1] : null;
       const sameCategory = lastGoal && lastGoal.category === currentCategory;
-
       if (sameCategory && !lastGoal.description) {
         lastGoal.description = text;
       } else {
@@ -310,11 +355,25 @@ function parseGoalsFromHtml(html) {
       continue;
     }
 
-    // List
     if (/^<(?:ul|ol)\b/i.test(chunk)) {
+      if (isOurExport) {
+        // All list items are description bullets for the previous goal.
+        // Flatten by stripping all tags and collecting non-empty lines.
+        const lastGoal = goals.length ? goals[goals.length - 1] : null;
+        if (lastGoal) {
+          chunk.replace(/<[^>]+>/g, '\n').split('\n').forEach(line => {
+            const t = clean(line);
+            if (t && t.length > 1 && !skipLabel(t)) {
+              if (lastGoal.description) lastGoal.description += '\n• ' + t;
+              else lastGoal.description = '• ' + t;
+            }
+          });
+        }
+        continue;
+      }
+
       const lastGoal = goals.length ? goals[goals.length - 1] : null;
       const sameCategory = lastGoal && lastGoal.category === currentCategory;
-      // When the previous goal came from a paragraph, list items are its supporting activities
       const foldIntoSubs = !!(sameCategory && lastGoal && lastGoal._fromPara);
 
       const liRe = /<li[^>]*>([\s\S]*?)<\/li>/gi;
@@ -323,7 +382,16 @@ function parseGoalsFromHtml(html) {
         const nestedMatch = lim[1].match(/<(?:ul|ol)[^>]*>([\s\S]*?)<\/(?:ul|ol)>/i);
         const mainContent = lim[1].replace(/<(?:ul|ol)[^>]*>[\s\S]*?<\/(?:ul|ol)>/gi, "");
         const parts = mainContent.split("\x00").map(p => clean(p)).filter(s => s.length > 1);
-        if (!parts.length) continue;
+        if (!parts.length) {
+          // Empty outer <li> with only a nested <ul> — this is our export's description block.
+          // Fold the nested items into the previous goal's subItems.
+          if (nestedMatch && goals.length) {
+            const prevGoal = goals[goals.length - 1];
+            [...nestedMatch[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)]
+              .forEach(n => { const t = clean(n[1].split("\x00")[0]); if (t && !skipLabel(t)) prevGoal.subItems.push(t); });
+          }
+          continue;
+        }
 
         const liText = parts[0];
         const liDesc = parts.slice(1).join(" ");
@@ -346,32 +414,59 @@ function parseGoalsFromHtml(html) {
     }
   }
 
+  // For our own re-imported exports: fold nested subItems back into description free-text
+  if (isOurExport) {
+    goals.forEach(g => {
+      if (!g.description && g.subItems && g.subItems.length > 0) {
+        g.description = g.subItems.map(s => '• ' + s).join('\n');
+        g.subItems = [];
+      }
+    });
+    return goals.filter(g => g.category !== "General");
+  }
+
   return goals;
 }
 
 // ═══ GOALS EXPORT DOCX ═══
+
+// Parse description text with _underline_ markers into TextRun arrays
+function parseDescRuns(text, TextRun, color='212121') {
+  const parts = text.split(/(_[^_\n]+_)/);
+  return parts.filter(p => p).map(p => {
+    if (/^_[^_\n]+_$/.test(p)) {
+      return new TextRun({ text: p.slice(1,-1), font: 'Arial', size: 16, color, underline: { type: 'single' } });
+    }
+    return new TextRun({ text: p, font: 'Arial', size: 16, color });
+  });
+}
+
 app.post("/api/goals/export-docx", async (req, res) => {
   try {
     const docx = require("docx");
-    const { Document, Packer, Paragraph, TextRun, Header, Footer, PageNumber, BorderStyle } = docx;
+    const { Document, Packer, Paragraph, TextRun, Header, Footer, PageNumber, BorderStyle,
+            HeadingLevel, LevelFormat, AlignmentType } = docx;
     const year = req.body.year || new Date().getFullYear();
     const file = path.join(GOALS_DIR, year + "_goals.json");
     const goalsData = readJSON(file, null);
     if (!goalsData) return res.status(404).json({ error: "No goals for " + year });
     const cfg = getConfig();
     const BLUE = "0F3A85", DARK = "212121", GRAY = "888888", LGRAY = "C0C0C0", GREEN = "144B2D";
-    const SL = { "on-track": "✓", "complete": "✓", "needs-attention": "△", "in-progress": "▸" };
     const SC = { "on-track": GREEN, "complete": GRAY, "needs-attention": "B8860B", "in-progress": BLUE };
     const SName = { "on-track": "On Track", "complete": "Complete", "needs-attention": "Needs Attention", "in-progress": "In Progress" };
     const appTitle = cfg.name ? cfg.name + "'s Goals — " + year : "Goals " + year;
     const c = [];
 
+    // Invisible round-trip marker (white 1pt text — invisible to reader, detectable by importer)
+    c.push(new Paragraph({ children: [new TextRun({ text: "_GOALS_EXPORT_V2_", color: "FFFFFF", size: 1 })] }));
+
+    // Visual title (plain paragraph, NOT a heading — importer skips preamble for our exports)
     c.push(new Paragraph({ spacing: { after: 40 }, children: [
-      new TextRun({ text: year + " Annual Goals", font: "Times New Roman", size: 28, bold: true, color: BLUE }),
+      new TextRun({ text: String(year) + " Annual Goals", font: "Times New Roman", size: 36, bold: true, color: BLUE }),
     ]}));
     if (cfg.name || cfg.team) {
       c.push(new Paragraph({ spacing: { after: 20 }, children: [
-        new TextRun({ text: [cfg.name, cfg.team].filter(Boolean).join("  ·  "), font: "Arial", size: 18, color: GRAY }),
+        new TextRun({ text: [cfg.name, cfg.team].filter(Boolean).join("  ·  "), font: "Arial", size: 22, color: GRAY }),
       ]}));
     }
     c.push(new Paragraph({ border: { bottom: { color: BLUE, space: 4, style: BorderStyle.SINGLE, size: 2 } }, spacing: { after: 240 } }));
@@ -381,38 +476,108 @@ app.post("/api/goals/export-docx", async (req, res) => {
 
     for (const cat of categories) {
       const catGoals = active.filter(g => g.category === cat);
-      c.push(new Paragraph({ spacing: { before: 160, after: 40 }, children: [
-        new TextRun({ text: cat.toUpperCase(), font: "Arial", size: 16, bold: true, color: BLUE, characterSpacing: 80 }),
-      ]}));
+      // Real H1 heading → importer picks this up as a category on re-import
+      c.push(new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 200, after: 60 },
+        children: [new TextRun({ text: cat, font: "Arial", size: 22, bold: true, color: BLUE, characterSpacing: 40 })],
+      }));
+
       for (const g of catGoals) {
         const statusColor = SC[g.status] || GREEN;
         const statusName = SName[g.status] || g.status;
-        c.push(new Paragraph({ spacing: { before: 80, after: 8 }, children: [
-          new TextRun({ text: (SL[g.status] || "○") + "  ", font: "Arial", size: 16, color: statusColor }),
-          new TextRun({ text: g.text, font: "Times New Roman", size: 20, bold: true, color: DARK }),
-        ]}));
+
+        // Goal text as plain bold paragraph (not a bullet) — importer detects bold <p> as a goal
+        c.push(new Paragraph({
+          spacing: { after: 8 },
+          children: [new TextRun({ text: g.text, font: "Arial", size: 24, bold: true, color: DARK })],
+        }));
+
+        // Status / meta line — indented plain paragraph (skipLabel filters it on re-import)
         const meta = [statusName, g.dueDate ? "Due: " + g.dueDate : null, g.orgAlignment ? "Alignment: " + g.orgAlignment : null].filter(Boolean).join("  ·  ");
-        if (meta) c.push(new Paragraph({ spacing: { after: 8 }, indent: { left: 240 }, children: [new TextRun({ text: meta, font: "Arial", size: 14, color: GRAY })]}));
-        if (g.description) c.push(new Paragraph({ spacing: { after: 8 }, indent: { left: 240 }, children: [new TextRun({ text: g.description, font: "Arial", size: 16, color: DARK })]}));
-        (g.subItems || []).forEach(si => c.push(new Paragraph({ spacing: { after: 4 }, indent: { left: 480 }, children: [new TextRun({ text: "•  " + si, font: "Arial", size: 14, color: DARK })]})));
-        const qRows = ["q1Notes","q2Notes","q3Notes","q4Notes"].map((k,i) => g[k] ? "Q"+(i+1)+": "+g[k] : null).filter(Boolean);
-        qRows.forEach(qr => c.push(new Paragraph({ spacing: { after: 4 }, indent: { left: 480 }, children: [new TextRun({ text: qr, font: "Arial", size: 14, italics: true, color: GRAY })]})));
-        c.push(new Paragraph({ spacing: { after: 12 } }));
+        if (meta) c.push(new Paragraph({ spacing: { after: 4 }, indent: { left: 480 }, children: [
+          new TextRun({ text: "Status: " + meta, font: "Arial", size: 18, color: GRAY }),
+        ]}));
+
+        // Description lines: • = level-0 bullet, "  • " or "◦" = level-1 sub-bullet, plain = free text
+        const descText = g.description || (g.subItems && g.subItems.length ? g.subItems.map(s => '• ' + s).join('\n') : '');
+        if (descText) {
+          descText.split('\n').forEach(line => {
+            const raw = line;
+            const trimmed = line.trimStart();
+            if (!trimmed) return;
+            const leadSpaces = raw.length - trimmed.length;
+            const isSubBullet = /^[◦o]\s/.test(trimmed) || (leadSpaces >= 2 && /^[•▸▪]\s/.test(trimmed));
+            const isMainBullet = !isSubBullet && /^[•▸▪]\s/.test(trimmed);
+            const text = trimmed.replace(/^[•◦▸▪o]\s*/, '');
+            if (!text) return;
+            const runs = parseDescRuns(text, TextRun, DARK);
+            if (isSubBullet) {
+              c.push(new Paragraph({ numbering: { reference: "bullet-list", level: 1 }, children: runs }));
+            } else if (isMainBullet) {
+              c.push(new Paragraph({ numbering: { reference: "bullet-list", level: 0 }, children: runs }));
+            } else {
+              c.push(new Paragraph({ spacing: { after: 4 }, indent: { left: 360 }, children: runs }));
+            }
+          });
+        }
+
+        // Quarterly notes — visual only, skipped on re-import
+        const qRows = ["q1Notes","q2Notes","q3Notes","q4Notes"]
+          .map((k,i) => g[k] ? "Q"+(i+1)+": "+g[k] : null).filter(Boolean);
+        if (qRows.length) {
+          c.push(new Paragraph({ spacing: { before: 8 }, indent: { left: 480 }, children: [
+            new TextRun({ text: "Quarterly Notes:", font: "Arial", size: 16, bold: true, color: GRAY }),
+          ]}));
+          qRows.forEach(qr => c.push(new Paragraph({ spacing: { after: 4 }, indent: { left: 600 }, children: [
+            new TextRun({ text: qr, font: "Arial", size: 16, italics: true, color: GRAY }),
+          ]})));
+        }
+        c.push(new Paragraph({ spacing: { after: 16 } }));
       }
     }
 
-    const doc = new Document({ sections: [{
-      properties: { page: { margin: { top: 1200, bottom: 1000, left: 1100, right: 1100 } } },
-      headers: { default: new Header({ children: [new Paragraph({ children: [
-        new TextRun({ text: appTitle, font: "Times New Roman", size: 16, color: LGRAY }),
-        new TextRun({ text: (cfg.team ? "  ·  " + cfg.team : "") + "  ·  " + today(), font: "Arial", size: 14, color: LGRAY }),
-      ]})]})},
-      footers: { default: new Footer({ children: [new Paragraph({ children: [
-        new TextRun({ text: "Confidential" + (cfg.org ? "  ·  " + cfg.org : "") + "          Page ", font: "Arial", size: 14, color: LGRAY }),
-        new TextRun({ children: [PageNumber.CURRENT], font: "Arial", size: 14, color: LGRAY }),
-      ]})]})},
-      children: c,
-    }]});
+    const doc = new Document({
+      numbering: {
+        config: [{
+          reference: "bullet-list",
+          levels: [
+            {
+              level: 0,
+              format: LevelFormat.BULLET,
+              text: "•",
+              alignment: AlignmentType.LEFT,
+              style: {
+                run: { font: "Arial", size: 16 },
+                paragraph: { indent: { left: 480, hanging: 240 }, spacing: { after: 4 } },
+              },
+            },
+            {
+              level: 1,
+              format: LevelFormat.BULLET,
+              text: "◦",
+              alignment: AlignmentType.LEFT,
+              style: {
+                run: { font: "Arial", size: 16 },
+                paragraph: { indent: { left: 960, hanging: 240 }, spacing: { after: 4 } },
+              },
+            },
+          ],
+        }],
+      },
+      sections: [{
+        properties: { page: { margin: { top: 1200, bottom: 1000, left: 1100, right: 1100 } } },
+        headers: { default: new Header({ children: [new Paragraph({ children: [
+          new TextRun({ text: appTitle, font: "Times New Roman", size: 16, color: LGRAY }),
+          new TextRun({ text: (cfg.team ? "  ·  " + cfg.team : "") + "  ·  " + today(), font: "Arial", size: 14, color: LGRAY }),
+        ]})]})},
+        footers: { default: new Footer({ children: [new Paragraph({ children: [
+          new TextRun({ text: "Confidential" + (cfg.org ? "  ·  " + cfg.org : "") + "          Page ", font: "Arial", size: 14, color: LGRAY }),
+          new TextRun({ children: [PageNumber.CURRENT], font: "Arial", size: 14, color: LGRAY }),
+        ]})]})},
+        children: c,
+      }],
+    });
 
     const buffer = await Packer.toBuffer(doc);
     const filename = year + "_goals.docx";
@@ -572,8 +737,6 @@ app.post("/api/reports/export-docx", async (req, res) => {
       }
       c.push(new Paragraph({ spacing: { after: 200 } }));
     }
-
-    // Goals section
     if (detail !== "summary" && detail !== "checkin" && goalsData && goalsData.goals && goalsData.goals.length) {
       c.push(new Paragraph({ border: { bottom: { color: "E0E0E0", space: 2, style: BorderStyle.SINGLE, size: 1 } }, spacing: { after: 160 }, children: [
         new TextRun({ text: "Progress by Goal", font: "Times New Roman", size: 22, color: BLUE }),
@@ -844,8 +1007,19 @@ app.post("/api/archive/:id/export-docx", async (req, res) => {
 
 // ═══ AI MEMORY ═══
 function getMemory() {
+  // Primary: profile.json.memory; fallback: memory.md (legacy)
+  const profile = readJSON(PROFILE_FILE, null);
+  if (profile && typeof profile.memory === "string" && profile.memory.trim()) return profile.memory.trim();
   if (!fs.existsSync(MEMORY_FILE)) return "";
   try { return fs.readFileSync(MEMORY_FILE, "utf8").trim(); } catch(_) { return ""; }
+}
+function saveMemory(content) {
+  // Write to profile.json AND keep memory.md in sync
+  const profile = readJSON(PROFILE_FILE, {});
+  profile.memory = content;
+  profile.memoryUpdatedAt = new Date().toISOString();
+  fs.writeFileSync(PROFILE_FILE, JSON.stringify(profile, null, 2), "utf8");
+  fs.writeFileSync(MEMORY_FILE, content, "utf8");
 }
 
 // ═══ AI CLIENT (corporate SSO via CLI token) ═══
@@ -890,6 +1064,79 @@ app.post("/api/claude", async (req, res) => {
   } catch (e) {
     console.error("Claude API error:", e.message);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ═══ PROFILE (AI) ═══
+app.get("/api/profile", (req, res) => {
+  const profile = readJSON(PROFILE_FILE, null);
+  if (!profile) return res.json(null);
+  // Inject memory if not yet stored in profile.json (migration from memory.md)
+  if (!profile.memory && fs.existsSync(MEMORY_FILE)) {
+    try { profile.memory = fs.readFileSync(MEMORY_FILE, "utf8").trim(); } catch(_) {}
+  }
+  res.json(profile);
+});
+
+app.patch("/api/profile", (req, res) => {
+  const existing = readJSON(PROFILE_FILE, null);
+  if (!existing) return res.status(404).json({ error: "No profile yet — generate one first" });
+  const merged = { ...existing, ...req.body, updatedAt: new Date().toISOString(), manuallyEdited: true };
+  fs.writeFileSync(PROFILE_FILE, JSON.stringify(merged, null, 2), "utf8");
+  // Keep memory.md in sync if memory field was updated
+  if (typeof req.body.memory === "string") fs.writeFileSync(MEMORY_FILE, req.body.memory, "utf8");
+  res.json({ ok: true, profile: merged });
+});
+
+app.post("/api/profile/generate", async (req, res) => {
+  try {
+    const apiKey = getAIToken();
+    const Anthropic = require("@anthropic-ai/sdk");
+    const client = new Anthropic({ authToken: apiKey, baseURL: AI_BASE_URL_CONST });
+    const { notes } = readJSON(NOTES_FILE, { notes: [] });
+    if (!notes.length) return res.json({ ok: false, error: "No notes to analyze" });
+
+    // Build condensed corpus — title + notebook/section + first 250 chars of content
+    const corpus = notes.map(n => {
+      const loc = [n.notebook, n.section].filter(Boolean).join(" / ");
+      const snippet = (n.content || "").replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 250);
+      return `[${loc}]\nTitle: ${n.title || "Untitled"}\n${snippet ? "Content: " + snippet : ""}`;
+    }).join("\n\n");
+
+    const prompt = `You are building a personal knowledge profile for someone based on their notes. Analyze the notes and return ONLY a valid JSON object with exactly this structure (no other text, no markdown, no explanation):
+{
+  "summary": "2-3 sentence professional overview of who this person is",
+  "role": "their current role, team, and company context",
+  "workThemes": ["key recurring work themes, 3-8 words each"],
+  "skills": ["technical and professional skills evident in the notes"],
+  "knowledge": ["domains of knowledge — pharma, software, process, etc."],
+  "activeProjects": ["current or recent project names/areas"],
+  "relationships": [{"name": "person name", "context": "brief relationship context"}],
+  "interests": ["personal interests and hobbies from notes"],
+  "insights": ["3-5 interesting observations about work style, priorities, or expertise"],
+  "tags": ["20-30 searchable single-word or short tags"]
+}
+
+NOTES CORPUS (${notes.length} notes):
+${corpus}`;
+
+    const message = await client.messages.create({
+      model: AI_MODEL_CONST,
+      max_tokens: 3000,
+      messages: [{ role: "user", content: prompt }]
+    });
+
+    const raw = message.content[0].text;
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.status(500).json({ ok: false, error: "No JSON in response" });
+    const profile = JSON.parse(jsonMatch[0]);
+    profile.updatedAt = new Date().toISOString();
+    profile.noteCount = notes.length;
+    fs.writeFileSync(PROFILE_FILE, JSON.stringify(profile, null, 2), "utf8");
+    res.json({ ok: true, profile });
+  } catch (e) {
+    console.error("Profile generate error:", e.message);
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
@@ -1189,7 +1436,7 @@ app.put("/api/memory", (req, res) => {
   try {
     const { content } = req.body;
     if (typeof content !== "string") return res.status(400).json({ error: "content required" });
-    fs.writeFileSync(MEMORY_FILE, content, "utf8");
+    saveMemory(content);
     res.json({ ok: true });
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -1239,10 +1486,146 @@ Write in clear, factual prose. No markdown headers needed — plain paragraphs a
       messages: [{ role: "user", content: refreshPrompt }],
     });
     const newMemory = message.content[0].text.trim();
-    fs.writeFileSync(MEMORY_FILE, newMemory, "utf8");
+    saveMemory(newMemory);
     res.json({ ok: true, content: newMemory });
   } catch(e) {
     console.error("Memory refresh error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ═══ OBSIDIAN SYNC ═══
+function profileToMarkdown(profile) {
+  const lines = [];
+  const dt = new Date().toISOString().slice(0, 10);
+  lines.push("---");
+  lines.push(`updated: ${dt}`);
+  lines.push("tags: [profile, richard-myles, work]");
+  lines.push("---");
+  lines.push("");
+  lines.push("# Richard Myles — Profile");
+  lines.push("");
+  if (profile.summary) { lines.push("## Summary"); lines.push(""); lines.push(profile.summary); lines.push(""); }
+  if (profile.role) { lines.push("## Role"); lines.push(""); lines.push(profile.role); lines.push(""); }
+  if (profile.workThemes?.length) { lines.push("## Work Themes"); lines.push(""); profile.workThemes.forEach(t => lines.push("- " + t)); lines.push(""); }
+  if (profile.skills?.length) { lines.push("## Skills"); lines.push(""); profile.skills.forEach(s => lines.push("- " + s)); lines.push(""); }
+  if (profile.knowledge?.length) { lines.push("## Knowledge"); lines.push(""); profile.knowledge.forEach(k => lines.push("- " + k)); lines.push(""); }
+  if (profile.activeProjects?.length) { lines.push("## Active Projects"); lines.push(""); profile.activeProjects.forEach(p => lines.push("- " + p)); lines.push(""); }
+  if (profile.relationships?.length) {
+    lines.push("## Relationships"); lines.push("");
+    profile.relationships.forEach(r => lines.push(`- **${r.name}** — ${r.context || ""}`));
+    lines.push("");
+  }
+  if (profile.interests?.length) { lines.push("## Interests"); lines.push(""); profile.interests.forEach(i => lines.push("- " + i)); lines.push(""); }
+  if (profile.insights?.length) { lines.push("## Insights"); lines.push(""); profile.insights.forEach(i => lines.push("- " + i)); lines.push(""); }
+  if (profile.tags?.length) { lines.push("## Tags"); lines.push(""); lines.push(profile.tags.join(", ")); lines.push(""); }
+  if (profile.memory) { lines.push("## Memory Notes"); lines.push(""); lines.push(profile.memory); lines.push(""); }
+  return lines.join("\n");
+}
+
+app.post("/api/obsidian/push", (req, res) => {
+  try {
+    const profile = readJSON(PROFILE_FILE, null);
+    if (!profile) return res.status(404).json({ error: "No profile to push" });
+    const md = profileToMarkdown(profile);
+    const dir = path.dirname(OBSIDIAN_PROFILE_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(OBSIDIAN_PROFILE_FILE, md, "utf8");
+    res.json({ ok: true, path: OBSIDIAN_PROFILE_FILE });
+  } catch(e) {
+    console.error("Obsidian push error:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/obsidian/pull", async (req, res) => {
+  try {
+    const sections = [];
+    // Read existing profile.md from vault (if it exists)
+    if (fs.existsSync(OBSIDIAN_PROFILE_FILE)) {
+      sections.push("=== VAULT: _claude/artifacts/profile.md ===\n" + fs.readFileSync(OBSIDIAN_PROFILE_FILE, "utf8"));
+    }
+    // Read team.md for relationship info
+    const teamFile = path.join(OBSIDIAN_VAULT, "04-people", "team.md");
+    if (fs.existsSync(teamFile)) {
+      sections.push("=== VAULT: 04-people/team.md ===\n" + fs.readFileSync(teamFile, "utf8"));
+    }
+    // Read any .md files in 01-lp1-work (top-level only)
+    const lpWorkDir = path.join(OBSIDIAN_VAULT, "01-lp1-work");
+    if (fs.existsSync(lpWorkDir)) {
+      fs.readdirSync(lpWorkDir).filter(f => f.endsWith(".md")).slice(0, 5).forEach(f => {
+        const content = fs.readFileSync(path.join(lpWorkDir, f), "utf8");
+        sections.push(`=== VAULT: 01-lp1-work/${f} ===\n${content.slice(0, 2000)}`);
+      });
+    }
+    // Read existing profile.md from vault if it exists
+    if (fs.existsSync(OBSIDIAN_PROFILE_FILE)) {
+      sections.push("=== VAULT: _claude/artifacts/profile.md ===\n" + fs.readFileSync(OBSIDIAN_PROFILE_FILE, "utf8").slice(0, 3000));
+    }
+    if (!sections.length) return res.json({ ok: true, message: "No relevant vault files found", merged: null });
+
+    const currentProfile = readJSON(PROFILE_FILE, {});
+    const apiKey = getAIToken();
+    const Anthropic = require("@anthropic-ai/sdk");
+    const client = new Anthropic({ authToken: apiKey, baseURL: AI_BASE_URL_CONST });
+
+    // Ask Claude to extract ONLY new additions — small output, easy to parse reliably
+    const existingSummary = {
+      relationships: (currentProfile.relationships || []).map(r => r.name),
+      skills: (currentProfile.skills || []).slice(0, 10),
+      knowledge: (currentProfile.knowledge || []).slice(0, 10),
+      workThemes: (currentProfile.workThemes || []),
+      activeProjects: (currentProfile.activeProjects || []),
+    };
+
+    const prompt = `You are extracting NEW information from Obsidian vault files to add to a user profile. Only return things NOT already present. Return ONLY a valid JSON object — no markdown, no explanation.
+
+ALREADY IN PROFILE (don't repeat these):
+- Relationships: ${existingSummary.relationships.join(", ") || "none"}
+- Skills (sample): ${existingSummary.skills.join(", ") || "none"}
+- Knowledge (sample): ${existingSummary.knowledge.join(", ") || "none"}
+- Work Themes: ${existingSummary.workThemes.join(", ") || "none"}
+- Active Projects: ${existingSummary.activeProjects.join(", ") || "none"}
+
+VAULT FILES:
+${sections.join("\n\n")}
+
+Return JSON with ONLY the new items to add (omit any array that has nothing new):
+{
+  "relationships": [{"name": "...", "context": "..."}],
+  "skills": ["new skill"],
+  "knowledge": ["new knowledge domain"],
+  "workThemes": ["new theme"],
+  "activeProjects": ["new project"],
+  "interests": ["new interest"],
+  "insights": ["new insight"],
+  "tags": ["new tag"]
+}`;
+
+    const message = await client.messages.create({
+      model: AI_MODEL_CONST, max_tokens: 1500,
+      messages: [{ role: "user", content: prompt }],
+    });
+    const raw = message.content[0].text;
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.status(500).json({ ok: false, error: "No JSON in response from Claude" });
+    const additions = JSON.parse(jsonMatch[0]);
+
+    // Merge additions into current profile (union — never remove existing)
+    const dedup = (existing, newItems) => {
+      const lc = new Set((existing || []).map(s => (typeof s === "string" ? s : s.name || "").toLowerCase()));
+      return [...(existing || []), ...(newItems || []).filter(s => !lc.has((typeof s === "string" ? s : s.name || "").toLowerCase()))];
+    };
+    const merged = { ...currentProfile };
+    ["skills","knowledge","workThemes","activeProjects","interests","insights","tags"].forEach(field => {
+      if (additions[field]?.length) merged[field] = dedup(currentProfile[field], additions[field]);
+    });
+    if (additions.relationships?.length) merged.relationships = dedup(currentProfile.relationships, additions.relationships);
+    merged.obsidianLastSync = new Date().toISOString();
+
+    res.json({ ok: true, merged, additionSummary: Object.fromEntries(Object.entries(additions).map(([k,v]) => [k, Array.isArray(v) ? v.length : 0])) });
+  } catch(e) {
+    console.error("Obsidian pull error:", e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -1303,12 +1686,8 @@ app.post("/api/briefing/run", (req, res) => {
   // Embed the skill instructions directly so Claude doesn't need the skill registered
   let skillBody = null;
   const cfg = getConfig();
-  const skillCandidates = [
-    cfg.dailyBriefingSkillPath,
-    path.join(__dirname, "electron", "skills", "daily-agenda.skill"), // bundled in exe
-    path.join("C:", "Dev", "packages", "claude_skills", "development", "daily-agenda.skill"), // dev fallback
-  ].filter(Boolean);
-  const skillPath = skillCandidates.find(p => { try { return fs.existsSync(p); } catch(_) { return false; } });
+  const skillPath = cfg.dailyBriefingSkillPath ||
+    path.join("C:", "Dev", "packages", "claude_skills", "development", "daily-agenda.skill");
   try {
     const AdmZip = require("adm-zip");
     const zip = new AdmZip(skillPath);
@@ -1353,8 +1732,6 @@ app.post("/api/briefing/run", (req, res) => {
     "C:\\Program Files\\Git\\bin\\bash.exe",
     "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
     "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
-    path.join(process.env.LOCALAPPDATA || "", "Programs", "Git", "bin", "bash.exe"),
-    path.join(process.env.USERPROFILE || "", "AppData", "Local", "Programs", "Git", "bin", "bash.exe"),
   ].filter(Boolean);
   const bashExe = bashCandidates.find(p => { try { return fs.existsSync(p); } catch(_) { return false; } });
 
@@ -1528,6 +1905,292 @@ app.delete("/api/notes/:id", (req, res) => {
   if (fs.existsSync(htmlFile)) fs.unlinkSync(htmlFile);
   res.json({ ok: true });
 });
+
+// ═══ 1:1 VAULT NOTES ═══
+app.get("/api/1on1", (req, res) => {
+  const on1Dir = path.join(OBSIDIAN_VAULT, "01-lp1-work", "1on1");
+  if (!fs.existsSync(on1Dir)) return res.json([]);
+  const files = fs.readdirSync(on1Dir).filter(f => f.endsWith(".md") && f !== "README.md");
+  const notes = [];
+  for (const file of files) {
+    try {
+      const raw = fs.readFileSync(path.join(on1Dir, file), "utf8");
+      const fm = {};
+      const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      if (fmMatch) {
+        fmMatch[1].split(/\r?\n/).forEach(line => {
+          const m = line.match(/^(\w+):\s*"?([^"\r\n]+)"?\s*$/);
+          if (m) fm[m[1]] = m[2].trim();
+        });
+      }
+      const base = file.replace(/\.md$/, "");
+      const datePart = base.match(/\d{4}-\d{2}-\d{2}$/);
+      const date = datePart ? datePart[0] : (fm.date || "");
+      const person = datePart ? base.slice(0, -11).trim() : base;
+      const openActions = [], doneActions = [], watchItems = [];
+      let inActions = false, inWatch = false;
+      for (const line of raw.split(/\r?\n/)) {
+        if (/^## Action Items/.test(line)) { inActions = true; inWatch = false; continue; }
+        if (/^## What to Watch/.test(line)) { inWatch = true; inActions = false; continue; }
+        if (/^## /.test(line)) { inActions = false; inWatch = false; }
+        if (inActions) {
+          const om = line.match(/^- \[ \] (.+)/); if (om) openActions.push(om[1].trim());
+          const dm = line.match(/^- \[x\] (.+)/i); if (dm) doneActions.push(dm[1].trim());
+        }
+        if (inWatch) { const wm = line.match(/^- (.+)/); if (wm) watchItems.push(wm[1].trim()); }
+      }
+      notes.push({ file, person, date, description: fm.description || "", status: fm.status || "completed", openActions, doneActions, watchItems });
+    } catch (e) { /* skip unparseable files */ }
+  }
+  const byPerson = {};
+  for (const n of notes) { if (!byPerson[n.person]) byPerson[n.person] = []; byPerson[n.person].push(n); }
+  Object.values(byPerson).forEach(arr => arr.sort((a, b) => b.date.localeCompare(a.date)));
+  const result = Object.entries(byPerson)
+    .map(([person, meetings]) => ({ person, meetings, lastDate: meetings[0].date }))
+    .sort((a, b) => b.lastDate.localeCompare(a.lastDate));
+  res.json(result);
+});
+
+app.post("/api/notes/export-docx", async (req, res) => {
+  try {
+    const { noteIds, title: exportTitle } = req.body;
+    if (!noteIds || !noteIds.length) return res.status(400).json({ error: "noteIds required" });
+    const data = readJSON(NOTES_FILE, { notes: [] });
+    const selected = noteIds.map(id => (data.notes || []).find(n => n.id === id)).filter(Boolean);
+    if (!selected.length) return res.status(404).json({ error: "No matching notes" });
+
+    const docxLib = require("docx");
+    const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+            WidthType, BorderStyle, AlignmentType } = docxLib;
+    const cheerio = require("cheerio");
+
+    const DARK = "212121", GRAY = "777777", BLUE = "0F3A85", LGRAY = "DDDDDD";
+    const FONT = "Arial", BASE_SIZE = 20;
+    const noBorder = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+    const cellBorder = { style: BorderStyle.SINGLE, size: 4, color: LGRAY };
+
+    // Convert HTML string → array of docx Paragraph/Table objects
+    function htmlToDocxElements(html) {
+      const $ = cheerio.load(`<div id="_root">${html}</div>`, { decodeEntities: true });
+      const elems = [];
+      const BLOCK = new Set(["p","div","h1","h2","h3","h4","h5","h6","ul","ol","table","blockquote","pre"]);
+
+      function inlineRuns(el, fmt = {}) {
+        const runs = [];
+        $(el).contents().each((_, node) => {
+          if (node.type === "text") {
+            const text = (node.data || "").replace(/​/g, "").replace(/ /g, " ");
+            if (!text) return;
+            runs.push(new TextRun({ text, font: FONT, size: fmt.size || BASE_SIZE,
+              color: fmt.color || DARK, bold: !!fmt.bold, italics: !!fmt.italics,
+              underline: fmt.underline || undefined }));
+          } else if (node.type === "tag") {
+            const tag = node.tagName.toLowerCase();
+            if (BLOCK.has(tag)) return; // skip nested blocks inside inline scan
+            const cf = { ...fmt };
+            if (tag === "strong" || tag === "b") cf.bold = true;
+            if (tag === "em" || tag === "i") cf.italics = true;
+            if (tag === "u") cf.underline = { type: "single" };
+            if (tag === "a") cf.underline = { type: "single" };
+            if (tag === "br") { runs.push(new TextRun({ break: 1, font: FONT, size: cf.size || BASE_SIZE })); return; }
+            runs.push(...inlineRuns(node, cf));
+          }
+        });
+        return runs;
+      }
+
+      function makePara(el, fmt = {}, opts = {}) {
+        const runs = inlineRuns(el, fmt);
+        if (!runs.length && !opts.allowEmpty) return null;
+        return new Paragraph({ spacing: { after: opts.after ?? 60 }, ...opts.para,
+          children: runs.length ? runs : [new TextRun({ text: "", font: FONT, size: BASE_SIZE })] });
+      }
+
+      function processTable(el, out) {
+        out = out || elems;
+        const rows = [];
+        $(el).find("tr").each((_, tr) => {
+          const cells = [];
+          $(tr).children("td, th").each((_, td) => {
+            const isHdr = td.tagName.toLowerCase() === "th";
+            const cellParas = [];
+            let hasBlocks = false;
+            $(td).children().each((_, child) => { if (BLOCK.has((child.tagName || "").toLowerCase())) hasBlocks = true; });
+            if (hasBlocks) {
+              // Iterate children directly — don't pass the <td> node itself
+              $(td).children().each((_, child) => processEl(child, 0, null, cellParas));
+            } else {
+              const runs = inlineRuns(td, { bold: isHdr });
+              cellParas.push(new Paragraph({ children: runs.length ? runs : [new TextRun({ text: " ", font: FONT, size: BASE_SIZE })] }));
+            }
+            cells.push(new TableCell({
+              children: cellParas.length ? cellParas : [new Paragraph({ children: [new TextRun({ text: " ", font: FONT, size: BASE_SIZE })] })],
+              shading: isHdr ? { fill: "F0F0F0" } : undefined,
+              borders: { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder },
+            }));
+          });
+          if (cells.length) rows.push(new TableRow({ children: cells }));
+        });
+        if (!rows.length) return;
+        out.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows,
+          borders: { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder,
+            insideH: cellBorder, insideV: cellBorder } }));
+        out.push(new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: "" })] }));
+      }
+
+      function processEl(el, listDepth, listType, target) {
+        const out = target || elems;
+        const tag = (el.tagName || "").toLowerCase();
+        if (tag === "table") { processTable(el, out); return; }
+        if (tag === "ul" || tag === "ol") {
+          $(el).children("li").each((_, li) => {
+            // Clone li without nested lists to get just the text
+            const $liClone = $(li).clone();
+            $liClone.children("ul, ol").remove();
+            const runs = inlineRuns($liClone[0]);
+            const numRef = (tag === "ol") ? "note-num" : "note-bullets";
+            out.push(new Paragraph({ numbering: { reference: numRef, level: Math.min(listDepth, 8) }, children: runs.length ? runs : [new TextRun({ text: "", font: FONT, size: BASE_SIZE })] }));
+            // Recurse into nested lists
+            $(li).children("ul, ol").each((_, nested) => {
+              processEl(nested, listDepth + 1, nested.tagName.toLowerCase(), out);
+            });
+          });
+          // Process non-<li> block children (OneNote places <div><table> directly inside <ul>)
+          $(el).children().not("li").each((_, child) => {
+            const childTag = (child.tagName || "").toLowerCase();
+            if (BLOCK.has(childTag)) processEl(child, listDepth, listType, out);
+          });
+          return;
+        }
+        if (tag === "h1" || tag === "h2" || tag === "h3" || tag === "h4" || tag === "h5" || tag === "h6") {
+          const sz = { h1: 28, h2: 26, h3: 24, h4: 22, h5: 20, h6: 20 };
+          const runs = inlineRuns(el, { bold: true, size: sz[tag] });
+          out.push(new Paragraph({ spacing: { before: 120, after: 40 }, children: runs.length ? runs : [new TextRun({ text: "", font: FONT, size: sz[tag] })] }));
+          return;
+        }
+        if (tag === "p") {
+          const p = makePara(el);
+          if (p) out.push(p);
+          else out.push(new Paragraph({ spacing: { after: 40 }, children: [new TextRun({ text: "" })] }));
+          return;
+        }
+        if (tag === "div" || tag === "section" || tag === "article" || !tag) {
+          let hasBlocks = false;
+          $(el).children().each((_, child) => { if (BLOCK.has((child.tagName || "").toLowerCase())) hasBlocks = true; });
+          if (hasBlocks) {
+            $(el).contents().each((_, child) => {
+              if (child.type === "text") {
+                const text = (child.data || "").trim();
+                if (text) out.push(new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text, font: FONT, size: BASE_SIZE, color: DARK })] }));
+              } else { processEl(child, listDepth, listType, out); }
+            });
+          } else {
+            const p = makePara(el);
+            if (p) out.push(p);
+          }
+          return;
+        }
+        if (tag === "br") { out.push(new Paragraph({ spacing: { after: 40 }, children: [new TextRun({ text: "" })] })); return; }
+        if (tag === "blockquote" || tag === "pre") {
+          const runs = inlineRuns(el, { italics: tag === "blockquote" });
+          out.push(new Paragraph({ spacing: { after: 60 }, indent: { left: 480 }, children: runs.length ? runs : [new TextRun({ text: "" })] }));
+          return;
+        }
+        // Fallback: treat as paragraph
+        const p = makePara(el);
+        if (p) out.push(p);
+      }
+
+      $("#_root").children().each((_, el) => processEl(el, 0, null, null));
+      return elems;
+    }
+
+    // Fallback for notes without HTML files: plain text parser
+    function plainTextToDocxElements(text) {
+      const out = [];
+      const lines = (text || "").replace(/\r\n/g, "\n").split("\n");
+      lines.forEach(line => {
+        const trimmed = line.trimStart();
+        const leadSpaces = line.length - trimmed.length;
+        if (!trimmed) { out.push(new Paragraph({ spacing: { after: 40 }, children: [new TextRun({ text: "" })] })); return; }
+        const isSubBullet = /^[◦o]\s/.test(trimmed) || (leadSpaces >= 2 && /^[•▸▪]\s/.test(trimmed));
+        const isMainBullet = !isSubBullet && /^[•▸▪]\s/.test(trimmed);
+        const t = trimmed.replace(/^[•◦▸▪o]\s*/, "");
+        const runs = t.split(/(_[^_\n]+_)/).filter(p => p).map(p =>
+          /^_[^_\n]+_$/.test(p)
+            ? new TextRun({ text: p.slice(1,-1), font: FONT, size: BASE_SIZE, color: DARK, underline: { type: "single" } })
+            : new TextRun({ text: p, font: FONT, size: BASE_SIZE, color: DARK }));
+        if (isSubBullet) out.push(new Paragraph({ numbering: { reference: "note-bullets", level: 1 }, children: runs }));
+        else if (isMainBullet) out.push(new Paragraph({ numbering: { reference: "note-bullets", level: 0 }, children: runs }));
+        else out.push(new Paragraph({ spacing: { after: 60 }, children: runs }));
+      });
+      return out;
+    }
+
+    const c = [];
+    const docLabel = exportTitle || ("Notes Export — " + new Date().toLocaleDateString("en-US", { year:"numeric", month:"long", day:"numeric" }));
+    c.push(new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: docLabel, font: "Times New Roman", size: 32, bold: true, color: BLUE })] }));
+    c.push(new Paragraph({ spacing: { after: 240 }, border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: BLUE } },
+      children: [new TextRun({ text: selected.length + " note" + (selected.length !== 1 ? "s" : ""), font: FONT, size: 16, color: GRAY })] }));
+
+    selected.forEach((note, idx) => {
+      if (idx > 0) c.push(new Paragraph({ spacing: { before: 320, after: 0 }, border: { top: { style: BorderStyle.SINGLE, size: 4, color: LGRAY } }, children: [new TextRun({ text: "" })] }));
+      c.push(new Paragraph({ spacing: { before: 200, after: 40 }, children: [new TextRun({ text: note.title || "Untitled", font: "Times New Roman", size: 26, bold: true, color: DARK })] }));
+      const loc = [note.notebook, note.section].filter(Boolean).join(" › ");
+      if (loc) c.push(new Paragraph({ spacing: { after: 8 }, children: [new TextRun({ text: loc, font: FONT, size: 16, italics: true, color: GRAY })] }));
+      const dt = note.updated || note.created || "";
+      if (dt) c.push(new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: dt, font: FONT, size: 14, color: GRAY })] }));
+      c.push(new Paragraph({ spacing: { after: 120 }, border: { bottom: { style: BorderStyle.SINGLE, size: 3, color: LGRAY } }, children: [new TextRun({ text: "" })] }));
+
+      // Use HTML file if available, otherwise fall back to plain text
+      const htmlFile = path.join(NOTES_HTML_DIR, note.id + ".html");
+      let contentElems;
+      if (fs.existsSync(htmlFile)) {
+        try {
+          const html = fs.readFileSync(htmlFile, "utf8");
+          contentElems = htmlToDocxElements(html);
+        } catch(e) {
+          console.error("HTML parse error for note", note.id, e.message);
+          contentElems = plainTextToDocxElements(note.content);
+        }
+      } else {
+        contentElems = plainTextToDocxElements(note.content);
+      }
+      c.push(...contentElems);
+    });
+
+    const doc = new Document({
+      numbering: {
+        config: [
+          { reference: "note-bullets", levels: [
+            { level: 0, format: "bullet", text: "•", alignment: AlignmentType.LEFT,
+              style: { run: { font: FONT, size: BASE_SIZE }, paragraph: { indent: { left: 480, hanging: 240 }, spacing: { after: 40 } } } },
+            { level: 1, format: "bullet", text: "◦", alignment: AlignmentType.LEFT,
+              style: { run: { font: FONT, size: BASE_SIZE }, paragraph: { indent: { left: 960, hanging: 240 }, spacing: { after: 40 } } } },
+            { level: 2, format: "bullet", text: "▪", alignment: AlignmentType.LEFT,
+              style: { run: { font: FONT, size: BASE_SIZE }, paragraph: { indent: { left: 1440, hanging: 240 }, spacing: { after: 40 } } } },
+          ]},
+          { reference: "note-num", levels: [
+            { level: 0, format: "decimal", text: "%1.", alignment: AlignmentType.LEFT,
+              style: { run: { font: FONT, size: BASE_SIZE }, paragraph: { indent: { left: 480, hanging: 240 }, spacing: { after: 40 } } } },
+            { level: 1, format: "lowerLetter", text: "%2.", alignment: AlignmentType.LEFT,
+              style: { run: { font: FONT, size: BASE_SIZE }, paragraph: { indent: { left: 960, hanging: 240 }, spacing: { after: 40 } } } },
+          ]},
+        ],
+      },
+      sections: [{ properties: { page: { margin: { top: 1080, bottom: 1080, left: 1080, right: 1080 } } }, children: c }],
+    });
+
+    const buf = await Packer.toBuffer(doc);
+    const filename = "notes-export-" + new Date().toISOString().slice(0, 10) + ".docx";
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.send(buf);
+  } catch (e) {
+    console.error("notes export-docx error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
 function decodeQP(str) {
   str = str.replace(/=\r?\n/g, "");
   const bytes = [];
@@ -1561,7 +2224,28 @@ function parseMhtFile(filePath) {
   if (!boundaryMatch) return [];
   const boundary = boundaryMatch[1];
   const parts = raw.split("--" + boundary);
-  const results = [];
+
+  // First pass: collect embedded images as data URLs
+  const imageMap = {};
+  for (const part of parts) {
+    const ctMatch = part.match(/Content-Type:\s*([^\r\n;]+)/i);
+    if (!ctMatch) continue;
+    const ct = ctMatch[1].trim().toLowerCase();
+    if (!ct.startsWith("image/")) continue;
+    const locMatch = part.match(/Content-Location:\s*([^\r\n]+)/i);
+    if (!locMatch) continue;
+    const fname = locMatch[1].trim().split("/").pop().split("\\").pop();
+    const encMatch = part.match(/Content-Transfer-Encoding:\s*([^\r\n]+)/i);
+    const enc = (encMatch ? encMatch[1].trim() : "").toLowerCase();
+    const bodyStart = part.indexOf("\r\n\r\n");
+    if (bodyStart === -1) continue;
+    if (enc === "base64") {
+      const imgData = part.slice(bodyStart + 4).replace(/\r?\n/g, "").trim();
+      imageMap[fname] = `data:${ct};base64,${imgData}`;
+    }
+  }
+
+  // Second pass: find HTML part, embed images, split into pages
   for (const part of parts) {
     const ctMatch = part.match(/Content-Type:\s*([^\r\n;]+)/i);
     if (!ctMatch || !ctMatch[1].toLowerCase().includes("text/html")) continue;
@@ -1571,31 +2255,68 @@ function parseMhtFile(filePath) {
     if (bodyStart === -1) continue;
     let html = part.slice(bodyStart + 4);
     if (enc === "quoted-printable") html = decodeQP(html);
-    // Split into OneNote pages: each page is wrapped in a div with border-width:100%
+
+    // Embed images as data URLs
+    html = html.replace(/src="([^"]+)"/gi, (match, src) => {
+      const fname = src.split("/").pop().split("\\").pop();
+      return imageMap[fname] ? `src="${imageMap[fname]}"` : match;
+    });
+
+    // Split into OneNote pages (each wrapped in border-width:100% div)
     const blocks = html.split(/<div[^>]*border-width:100%[^>]*>/i);
+    const results = [];
+    const processBlock = (block) => {
+      const titleMatch = block.match(/font-size:20\.0pt[^>]*>([^<]+)<\/p>/i);
+      const title = titleMatch ? titleMatch[1].trim() : null;
+      const dateMatch = block.match(/color:#767676[^>]*>([^<\r\n]{4,30})<\/p>/i);
+      const date = dateMatch ? dateMatch[1].trim() : "";
+      const cleanHtml = cleanMhtPageHtml(block);
+      const text = stripHtmlMht(block);
+      return { title, date, html: cleanHtml, text };
+    };
+
     if (blocks.length <= 1) {
-      const text = stripHtmlMht(html);
-      if (text.length > 50) results.push({ filename: "OneNote.mht-page", text });
+      const p = processBlock(html);
+      if (p.text.length > 50) results.push({ filename: "OneNote.mht-page", html: p.html, text: p.text });
     } else {
       blocks.slice(1).forEach((block, idx) => {
-        // Page title: first p with font-size:20pt
-        const titleMatch = block.match(/font-size:20\.0pt[^>]*>([^<]+)<\/p>/i);
-        const title = titleMatch ? titleMatch[1].trim() : "Page " + (idx + 1);
-        // Date line: first p with color:#767676
-        const dateMatch = block.match(/color:#767676[^>]*>([^<\r\n]{4,30})<\/p>/i);
-        const date = dateMatch ? dateMatch[1].trim() : "";
-        const text = stripHtmlMht(block);
-        if (text.length > 50) {
-          results.push({ filename: title + (date ? " (" + date + ")" : "") + ".mht-page", text });
+        const p = processBlock(block);
+        const title = p.title || "Page " + (idx + 1);
+        if (p.text.length > 50) {
+          results.push({
+            filename: title + (p.date ? " (" + p.date + ")" : "") + ".mht-page",
+            html: p.html,
+            text: p.text,
+          });
         }
       });
     }
-    break; // Only one HTML part in a typical OneNote MHT
+    return results;
   }
-  return results;
+  return [];
 }
 
-app.post("/api/notes/extract", (req, res, next) => getUpload().array("files", 20)(req, res, next), async (req, res) => {
+function cleanMhtPageHtml(html) {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    // Strip inline styles (OneNote inlines everything)
+    .replace(/\s+style="[^"]*"/gi, "")
+    .replace(/\s+style='[^']*'/gi, "")
+    // Strip namespace/metadata attributes
+    .replace(/\s+(?:class|lang|dir|xmlns(?::[a-z]+)?|[a-z]+:[a-z]+)="[^"]*"/gi, "")
+    // Collapse span tags (keep content)
+    .replace(/<span[^>]*>/gi, "").replace(/<\/span>/gi, "")
+    // Fix links — preserve external, nullify internal OneNote links
+    .replace(/href="(?!https?:\/\/)[^"]*"/gi, 'href="#"')
+    // Decode common entities
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    // Remove empty paragraphs
+    .replace(/<p>\s*<\/p>/gi, "").replace(/<p>\s*&nbsp;\s*<\/p>/gi, "")
+    .replace(/\s{3,}/g, " ").trim();
+}
+
+app.post("/api/notes/extract", (req, res, next) => getUpload().array("files", 60)(req, res, next), async (req, res) => {
   const uploaded = req.files || [];
   if (!uploaded.length) return res.status(400).json({ error: "No files uploaded" });
   const results = [];

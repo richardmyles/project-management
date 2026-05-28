@@ -43,7 +43,7 @@ button,input,select,textarea{font-family:var(--fb)}button{cursor:pointer}
 .tb{padding:7px 12px;font-size:10px;font-weight:600;border:none;background:#fff;color:var(--blue);transition:all .15s}
 .tb:first-child{border-radius:6px 0 0 6px}.tb.on{background:var(--primary);color:#fff}
 .btn{padding:7px 16px;font-size:12px;font-weight:600;border:none;border-radius:4px;color:#fff;transition:all .15s}
-.btn.sm{padding:4px 12px;font-size:11px}.btn.ol{background:transparent;border:1.5px solid currentColor}.btn:disabled{opacity:.5;cursor:default}
+.btn.sm{padding:4px 12px;font-size:11px}.btn.ol{background:transparent;border:1.5px solid currentColor;color:var(--dk)}.btn:disabled{opacity:.5;cursor:default}
 
 .card{background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.07);margin-bottom:12px;overflow:hidden}
 .card-h{padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:10px}
@@ -53,7 +53,7 @@ button,input,select,textarea{font-family:var(--fb)}button{cursor:pointer}
 .sh-t{font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.5px}
 .sh-a{font-size:10px;color:var(--blue);border:none;background:none;font-weight:600;cursor:pointer}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
-.x-btn{border:none;background:none;color:#ddd;font-size:16px;cursor:pointer;padding:0}.x-btn:hover{color:var(--red)}
+.x-btn{border:none;background:none;color:#999;font-size:16px;cursor:pointer;padding:0}.x-btn:hover{color:var(--red)}
 
 /* Milestone rows */
 .ms-h{display:grid;grid-template-columns:40px 1fr 96px 106px 28px;gap:5px;padding:5px 0;border-bottom:2px solid var(--primary)}
@@ -131,10 +131,11 @@ button,input,select,textarea{font-family:var(--fb)}button{cursor:pointer}
 
 .mo{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);padding:16px}
 .mo-c{background:#fff;border-radius:10px;width:520px;max-width:95vw;max-height:85vh;overflow:auto;box-shadow:0 8px 32px rgba(0,0,0,.2)}
+.mo-note{width:min(820px,96vw);max-height:94vh;}
 .mo-h{padding:14px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center}
 .mo-t{font-family:var(--fh);font-size:16px;font-weight:700}.mo-b{padding:20px}
 .mf{margin-bottom:12px}.ml{display:block;font-size:11px;font-weight:600;color:#666;margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px}
-.mi{width:100%;font-size:13px;padding:8px 10px;border:1px solid #ddd;border-radius:4px}
+.mi{width:100%;font-size:13px;padding:8px 10px;border:1px solid #ddd;border-radius:4px}.mi:focus,.mt:focus{border-color:var(--blue);outline:none;box-shadow:0 0 0 2px rgba(15,58,133,.15)}
 .mt{width:100%;font-size:13px;padding:8px 10px;border:1px solid #ddd;border-radius:4px;resize:vertical;min-height:60px}
 .mr{display:grid;grid-template-columns:1fr 1fr;gap:12px}.ma{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
 
@@ -158,8 +159,11 @@ button,input,select,textarea{font-family:var(--fb)}button{cursor:pointer}
 .wd-status-sel{font-size:11px;padding:4px 8px;border-radius:12px;font-weight:600;cursor:pointer;background:#fff;border-width:1.5px;border-style:solid;width:100%}
 .sug-chip{display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:3px 10px;border-radius:12px;border:1.5px solid var(--primary);color:var(--primary);background:#fff;cursor:pointer;transition:all .15s;margin:2px}
 .sug-chip.on{background:var(--primary);color:#fff}
-.notes-layout{display:grid;grid-template-columns:220px 1fr;gap:0;min-height:400px;}
-.notes-sidebar{border-right:1px solid #f0e0dd;padding:12px 0;min-height:400px;}
+.notes-layout{display:grid;grid-template-columns:220px 1fr;gap:0;height:calc(100vh - 160px);overflow:hidden;}
+.notes-sidebar{border-right:1px solid #f0e0dd;padding:12px 0;height:100%;overflow-y:auto;}
+.notes-main{height:100%;overflow-y:auto;}
+.ord-btn{background:none;border:none;cursor:pointer;color:#ccc;font-size:8px;padding:0 1px;line-height:1;vertical-align:middle;}.ord-btn:hover{color:#555;}
+.gb-si-row{display:flex;align-items:center;gap:6px;background:#f0f4f8;border-radius:4px;padding:5px 8px;margin-bottom:3px;}
 .nb-row{display:flex;align-items:center;gap:6px;padding:5px 12px;cursor:pointer;font-size:12px;font-weight:700;}
 .nb-row:hover{background:#faf8f7;}
 .nb-row.on{color:var(--blue);}
@@ -212,8 +216,14 @@ const SV={high:"#E1251B",medium:"#FFC709",low:"#0F3A85"};
 let state={projects:[],journal:[]},cfg={name:"",team:"",org:"",primaryColor:"#0F3A85",setupComplete:false};
 let goals={},goalMap={mappings:[]},reports=[],archive=[],hist={undo:0,redo:0};
 let tab="dashboard",exp={},jf="all",expMs={},expTk={},expGoals={};
-let npGoalRefs=[],taskFilter="all",goalYear=new Date().getFullYear(),reportQuarters=new Set(),pgPickerOpen=null;
-let notes=[],nFilter={nb:null,sec:null},noteSearch="",noteNbOpen={},noteView="notes",goalDetailView=null,goalQSel={};
+let npGoalRefs=[],taskFilter="all",goalYear=new Date().getFullYear(),reportQuarters=new Set(),pgPickerOpen=null,goalQSel={};
+let notes=[],nFilter={nb:null,sec:null},noteSearch="",noteNbOpen={},noteView="notes",noteExportMode=false,noteExportSel=new Set();
+let noteNbOrder=JSON.parse(localStorage.getItem('noteNbOrder')||'[]'),noteSecOrder=JSON.parse(localStorage.getItem('noteSecOrder')||'{}');
+let profile=null,profileEditMode=false;
+let on1Notes=[];
+let noteEditId=null,noteEditNote=null;
+let goalBuilderOpen=false,goalBuilderState={};let goalDetailView=null;
+let goalCats=[],goalCatMgrOpen=false;
 let scanState="idle",scanSuggestions=null,scanSelected={},scanNoteTitle="";
 let memoryContent="";
 let briefingData=null,briefingStatus={status:"idle"},briefingPoll=null,briefingElapsedTick=null;
@@ -225,8 +235,13 @@ async function load(){
     [state,cfg,goals,goalMap,reports,archive,hist]=await Promise.all([api("/api/state"),api("/api/config"),api("/api/goals"),api("/api/goals/map"),api("/api/reports"),api("/api/archive"),api("/api/history/count")]);
     const memR=await api("/api/memory").catch(()=>({content:""}));memoryContent=memR.content||"";
     notes=await api("/api/notes").catch(()=>[]);
+    goalCats=await api("/api/goals/categories/"+goalYear).catch(()=>[]);
+    profile=await api("/api/profile").catch(()=>null);
+    on1Notes=await api("/api/1on1").catch(()=>[]);
+    if(profile?.memory)memoryContent=profile.memory;
     const bRef=await api("/api/briefing").catch(()=>({data:null,status:{status:"idle"}}));
     briefingData=bRef.data;briefingStatus=bRef.status||{status:"idle"};
+    // Auto-run briefing if not run today and not already running
     if(briefingStatus.status!=="running"){
       const lastRun=briefingData?.metadata?.generated_at;
       const isToday=lastRun&&new Date(lastRun).toDateString()===new Date().toDateString();
@@ -241,7 +256,7 @@ async function load(){
 function showSetup(){document.getElementById("app").innerHTML='<div class="setup-overlay"><div class="setup-card"><div style="font-family:var(--fh);font-size:22px;font-weight:700;color:var(--primary);margin-bottom:8px">Welcome to My Projects</div><div style="font-size:13px;color:#888;margin-bottom:24px">Personalize your project tracker.</div><div class="mf"><label class="ml">Your Name</label><input class="mi" id="su-name" placeholder="e.g. Jane Smith"></div><div class="mf"><label class="ml">Team / Group</label><input class="mi" id="su-team" placeholder="e.g. Manufacturing Sciences"></div><div class="mf"><label class="ml">Organization</label><input class="mi" id="su-org" placeholder="e.g. Acme Corp"></div><div class="mf"><label class="ml">Accent Color</label><div style="display:flex;align-items:center;gap:8px"><input type="color" id="su-color" value="#0F3A85" oninput="document.getElementById(\'su-color-lbl\').textContent=this.value;document.documentElement.style.setProperty(\'--primary\',this.value)" style="width:40px;height:32px;border:1px solid #ddd;border-radius:4px;cursor:pointer"><span id="su-color-lbl" style="font-size:12px;color:#888">#0F3A85</span></div></div><button class="btn" style="background:var(--primary);width:100%;padding:10px;margin-top:12px;border-radius:6px" onclick="saveSetup()">Get Started &#8594;</button></div></div>';}
 window.saveSetup=async()=>{const name=document.getElementById("su-name").value.trim();if(!name)return alert("Please enter your name.");const team=document.getElementById("su-team").value.trim();const org=document.getElementById("su-org").value.trim();const color=document.getElementById("su-color").value;await api("/api/config",{method:"PUT",body:JSON.stringify({name,team,org,primaryColor:color,setupComplete:true})});cfg={name,team,org,primaryColor:color,setupComplete:true};document.documentElement.style.setProperty("--primary",color);document.title=name+"'s Projects";render();};
 
-async function save(){state.lastUpdated=new Date().toISOString();await api("/api/state",{method:"PUT",body:JSON.stringify(state)});hist=await api("/api/history/count");toast("Saved");render();}
+async function save(){state.lastUpdated=new Date().toISOString();await api("/api/state",{method:"PUT",body:JSON.stringify(state)});hist=await api("/api/history/count");toast("Saved");if(document.activeElement?.type==='date'){document.activeElement.addEventListener('blur',()=>render(),{once:true});}else{render();}}
 function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1500);}
 function fp(id){return state.projects.find(p=>p.id===id);}
 function gh(p){const b=p.milestones.filter(m=>m.status==="blocked").length,a=p.milestones.filter(m=>m.status==="at-risk").length,o=p.milestones.filter(m=>m.status!=="complete"&&dt(m.target)<0).length,c=p.milestones.filter(m=>m.status==="complete").length;if(b||o>1)return{l:"CRITICAL",c:"#E1251B"};if(a||o===1)return{l:"AT RISK",c:"#FFC709"};if(c===p.milestones.length&&p.milestones.length)return{l:"COMPLETE",c:"#144B2D"};return{l:"ON TRACK",c:"#144B2D"};}
@@ -348,14 +363,214 @@ window.goalDescTab=(e,id)=>{
     ta.value=val.slice(0,start)+'  '+val.slice(end);ta.selectionStart=ta.selectionEnd=start+2;editGoalField(id,'description',ta.value);
   }
 };
-window.openAddGoalModal=prefillCat=>{const cats=[...new Set(getAllGoals().map(g=>g.category))];const opts=cats.map(c=>'<option value="'+esc(c)+'"'+(c===prefillCat?' selected':'')+'>'+esc(c)+'</option>').join('');showModal('Add Goal','<div class="mf"><label class="ml">Goal</label><textarea class="mt" id="ag-text" rows="2" placeholder="Goal statement..."></textarea></div><div class="mf"><label class="ml">Description <span style="font-weight:400;color:#bbb">(optional)</span></label><input class="mi" id="ag-desc" placeholder="Brief description..."></div><div class="mr"><div class="mf"><label class="ml">Goal Category</label><input list="ag-cats-dl" class="mi" id="ag-cat" value="'+esc(prefillCat||'')+'" placeholder="e.g. Deliver Results"><datalist id="ag-cats-dl">'+opts+'</datalist></div><div class="mf"><label class="ml">Due Date</label><input type="date" class="mi" id="ag-due"></div></div><div class="mf"><label class="ml">Organization Alignment <span style="font-weight:400;color:#bbb">(optional)</span></label><input class="mi" id="ag-org" placeholder="e.g. Corporate strategy..."></div><div class="ma"><button class="btn sm ol" style="color:#999;border-color:#999" onclick="closeModal()">Cancel</button><button class="btn sm" style="background:var(--green)" onclick="saveNewGoal()">Add Goal</button></div>');};
-window.saveNewGoal=async()=>{const cat=document.getElementById('ag-cat')?.value.trim();const text=document.getElementById('ag-text')?.value.trim();if(!cat||!text){alert('Goal and Goal Category are required.');return;}const desc=document.getElementById('ag-desc')?.value.trim()||'';const due=document.getElementById('ag-due')?.value||'';const orgAlignment=document.getElementById('ag-org')?.value.trim()||'';await api('/api/goals',{method:'POST',body:JSON.stringify({category:cat,text,description:desc,dueDate:due,orgAlignment,year:goalYear})});goals=await api('/api/goals');closeModal();render();toast('Goal added');};
+window.openAddGoalModal=function(prefillCat,existingGoal){
+  if(existingGoal){
+    goalBuilderState={_id:existingGoal.id,category:existingGoal.category||'',text:existingGoal.text||'',description:existingGoal.description||(existingGoal.subItems?.length?(existingGoal.subItems.map(s=>'• '+s).join('\n')):''),orgAlignment:existingGoal.orgAlignment||'',dueDate:existingGoal.dueDate||'',subItems:[...(existingGoal.subItems||[])],status:existingGoal.status||'on-track',q1Notes:existingGoal.q1Notes||'',q2Notes:existingGoal.q2Notes||'',q3Notes:existingGoal.q3Notes||'',q4Notes:existingGoal.q4Notes||''};
+  } else {
+    goalBuilderState={category:prefillCat||'',text:'',description:'',orgAlignment:'',dueDate:'',subItems:[],status:'on-track',q1Notes:'',q2Notes:'',q3Notes:'',q4Notes:''};
+  }
+  goalBuilderOpen=true;render();
+};
+window.openGoalEditor=function(goalId){
+  const g=getAllGoals().find(g=>g.id===goalId);
+  if(g) openAddGoalModal('',g);
+};
+window.toggleCatMgr=function(){goalCatMgrOpen=!goalCatMgrOpen;render();};
+window.addGoalCat=async function(){
+  const inp=document.getElementById('cat-new-inp');
+  const val=(inp?.value||'').trim();
+  if(!val)return;
+  if(goalCats.includes(val)){toast('Category already exists');return;}
+  goalCats=[...goalCats,val].sort();
+  await api('/api/goals/categories/'+goalYear,{method:'PUT',body:JSON.stringify(goalCats)});
+  render();
+};
+window.rmGoalCat=async function(cat){
+  goalCats=goalCats.filter(c=>c!==cat);
+  await api('/api/goals/categories/'+goalYear,{method:'PUT',body:JSON.stringify(goalCats)});
+  render();
+};
+window.gbDescTab=function(e){
+  const t=e.target;
+  const s=t.selectionStart,end=t.selectionEnd;
+  const val=t.value;
+  const lineStart=val.lastIndexOf('\n',s-1)+1;
+  const lineEnd=val.indexOf('\n',s);
+  const lineEndIdx=lineEnd===-1?val.length:lineEnd;
+  const line=val.substring(lineStart,lineEndIdx);
+
+  if(e.key==='Tab'){
+    e.preventDefault();
+    if(!e.shiftKey){
+      // Main bullet "• " → sub-bullet "  • "
+      if(/^•\s/.test(line)){
+        t.value=val.substring(0,lineStart)+'  '+line+val.substring(lineEndIdx);
+        t.selectionStart=t.selectionEnd=s+2;
+        return;
+      }
+      // Indent by 2 spaces
+      t.value=val.substring(0,lineStart)+'  '+val.substring(lineStart);
+      t.selectionStart=t.selectionEnd=s+2;
+    } else {
+      // Sub-bullet "  • " → main bullet "• "
+      if(/^  •\s/.test(line)){
+        t.value=val.substring(0,lineStart)+line.substring(2)+val.substring(lineEndIdx);
+        t.selectionStart=t.selectionEnd=Math.max(lineStart,s-2);
+        return;
+      }
+      const removed=line.startsWith('  ')?2:line.startsWith(' ')?1:0;
+      if(removed){
+        t.value=val.substring(0,lineStart)+line.substring(removed)+val.substring(lineEndIdx);
+        t.selectionStart=t.selectionEnd=Math.max(lineStart,s-removed);
+      }
+    }
+  } else if(e.key===' '){
+    // "- " (dash then space) → bullet •
+    const beforeCursor=val.substring(lineStart,s);
+    if(/^(\s*)-$/.test(beforeCursor)){
+      e.preventDefault();
+      const spaces=beforeCursor.slice(0,-1);
+      t.value=val.substring(0,lineStart)+spaces+'• '+val.substring(s);
+      t.selectionStart=t.selectionEnd=lineStart+spaces.length+2;
+    }
+  } else if(e.key==='Enter'){
+    // Auto-continue bullet on next line (preserves leading spaces for sub-bullets)
+    const bulletMatch=val.substring(lineStart,s).match(/^(\s*)(•\s)/);
+    if(bulletMatch){
+      e.preventDefault();
+      const cont='\n'+bulletMatch[1]+bulletMatch[2];
+      t.value=val.substring(0,s)+cont+val.substring(end);
+      t.selectionStart=t.selectionEnd=s+cont.length;
+    }
+  }
+};
+window.gbDescInsert=function(type){
+  const t=document.getElementById('gb-desc');
+  if(!t)return;
+  const s=t.selectionStart,end=t.selectionEnd;
+  const val=t.value;
+  const sel=val.substring(s,end);
+  const lineStart=val.lastIndexOf('\n',s-1)+1;
+  const lineEndIdx=((idx=val.indexOf('\n',s))=>idx===-1?val.length:idx)();
+  const line=val.substring(lineStart,lineEndIdx);
+  if(type==='bullet'){
+    if(/^•\s/.test(line)){
+      t.value=val.substring(0,lineStart)+line.replace(/^•\s/,'')+val.substring(lineEndIdx);
+      t.selectionStart=t.selectionEnd=Math.max(lineStart,s-2);
+    } else if(/^  •\s/.test(line)){
+      t.value=val.substring(0,lineStart)+line.substring(2)+val.substring(lineEndIdx);
+      t.selectionStart=t.selectionEnd=Math.max(lineStart,s-2);
+    } else {
+      const clean=line.replace(/^\s*/,'');
+      t.value=val.substring(0,lineStart)+'• '+clean+val.substring(lineEndIdx);
+      t.selectionStart=t.selectionEnd=lineStart+2+(s-lineStart-Math.max(0,line.length-clean.length));
+    }
+  } else if(type==='subbullet'){
+    if(/^  •\s/.test(line)){
+      t.value=val.substring(0,lineStart)+line.substring(4)+val.substring(lineEndIdx);
+      t.selectionStart=t.selectionEnd=Math.max(lineStart,s-4);
+    } else if(/^•\s/.test(line)){
+      t.value=val.substring(0,lineStart)+'  '+line+val.substring(lineEndIdx);
+      t.selectionStart=t.selectionEnd=s+2;
+    } else {
+      const clean=line.replace(/^\s*/,'');
+      t.value=val.substring(0,lineStart)+'  • '+clean+val.substring(lineEndIdx);
+      t.selectionStart=t.selectionEnd=lineStart+4+(s-lineStart-Math.max(0,line.length-clean.length));
+    }
+  } else if(type==='underline'){
+    if(s===end){
+      t.value=val.substring(0,s)+'_text_'+val.substring(end);
+      t.selectionStart=s+1;t.selectionEnd=s+5;
+    } else {
+      t.value=val.substring(0,s)+'_'+sel+'_'+val.substring(end);
+      t.selectionStart=s;t.selectionEnd=end+2;
+    }
+  }
+  t.focus();
+};
+window.closeGoalBuilder=function(){goalBuilderOpen=false;render();};
+window.saveGoalBuilder=async function(){
+  const text=document.getElementById('gb-text')?.value.trim();
+  const cat=document.getElementById('gb-cat')?.value.trim();
+  if(!text||!cat){toast('Goal statement and Category are required');return;}
+  const body={category:cat,text,description:document.getElementById('gb-desc')?.value.trim()||'',orgAlignment:document.getElementById('gb-org')?.value.trim()||'',dueDate:document.getElementById('gb-due')?.value||'',status:document.getElementById('gb-status')?.value||'on-track',subItems:goalBuilderState.subItems||[],q1Notes:document.getElementById('gb-q1')?.value||'',q2Notes:document.getElementById('gb-q2')?.value||'',q3Notes:document.getElementById('gb-q3')?.value||'',q4Notes:document.getElementById('gb-q4')?.value||''};
+  if(goalBuilderState._id){
+    await api('/api/goals/'+goalBuilderState._id,{method:'PATCH',body:JSON.stringify(body)});
+  } else {
+    body.year=goalYear;
+    await api('/api/goals',{method:'POST',body:JSON.stringify(body)});
+  }
+  goals=await api('/api/goals');goalBuilderOpen=false;render();toast(goalBuilderState._id?'Goal updated':'Goal added');
+};
+window.gbAddSubItem=function(){const inp=document.getElementById('gb-si-new');const val=(inp?.value||'').trim();if(!val)return;goalBuilderState.subItems.push(val);inp.value='';const list=document.getElementById('gb-si-list');if(list){const i=goalBuilderState.subItems.length-1;const div=document.createElement('div');div.className='gb-si-row';div.innerHTML='<span style="color:#aaa;font-size:11px">•</span><span style="flex:1;font-size:12px">'+esc(val)+'</span><button class="x-btn" onclick="gbRmSubItem('+i+')">×</button>';list.appendChild(div);}};
+window.gbRmSubItem=function(i){goalBuilderState.subItems.splice(i,1);const list=document.getElementById('gb-si-list');if(list)list.innerHTML=goalBuilderState.subItems.map((s,j)=>'<div class="gb-si-row"><span style="color:#aaa;font-size:11px">•</span><span style="flex:1;font-size:12px">'+esc(s)+'</span><button class="x-btn" onclick="gbRmSubItem('+j+')">×</button></div>').join('');};
+function rGoalBuilder(){
+  let h='<div class="card" style="border-top:4px solid var(--green)">';
+  h+='<div class="card-b" style="border:none;padding-top:14px">';
+  h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">';
+  h+='<button class="btn sm ol" onclick="closeGoalBuilder()" style="font-size:10px">← Goals</button>';
+  h+='<div style="font-family:var(--fh);font-size:17px;font-weight:700;color:var(--green)">'+(goalBuilderState._id?'Edit Goal':'Goal Builder')+'</div>';
+  h+='<div style="flex:1"></div>';
+  h+='<button class="btn sm" style="background:var(--green)" onclick="saveGoalBuilder()">'+(goalBuilderState._id?'Update Goal':'Save Goal')+'</button>';
+  h+='</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">';
+  // Left col
+  h+='<div style="display:flex;flex-direction:column;gap:16px">';
+  // Core Goal
+  h+='<div style="background:#f9fdf9;border:1px solid #d4edda;border-radius:8px;padding:16px">';
+  h+='<div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Core Goal</div>';
+  h+='<div style="margin-bottom:10px"><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:4px">GOAL STATEMENT *</label><textarea id="gb-text" rows="3" placeholder="What do you want to achieve this year?" style="width:100%;box-sizing:border-box;font-size:13px;padding:8px 10px;border-radius:4px;border:1px solid #c8e6c9;resize:vertical;line-height:1.5;font-family:inherit">'+esc(goalBuilderState.text||'')+'</textarea></div>';
+  h+='<div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end">';
+  h+='<div><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:4px">CATEGORY *</label>';
+  const curCat=goalBuilderState.category||'';
+  const catOpts=[...goalCats];
+  if(curCat&&!catOpts.includes(curCat))catOpts.push(curCat);
+  h+='<select id="gb-cat" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd">';
+  if(!catOpts.length)h+='<option value="">— no categories yet —</option>';
+  catOpts.forEach(c=>{h+='<option value="'+esc(c)+'"'+(c===curCat?' selected':'')+'>'+esc(c)+'</option>';});
+  h+='</select></div>';
+  h+='<div><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:4px">YEAR</label><input type="number" id="gb-year" value="'+goalYear+'" min="2020" max="2040" style="width:72px;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd"></div>';
+  h+='</div></div>';
+  // Details
+  h+='<div style="background:#f5f7fa;border:1px solid #e2e8f0;border-radius:8px;padding:16px;flex:1">';
+  h+='<div style="font-size:10px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Details</div>';
+  h+='<div style="margin-bottom:10px"><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:4px">DESCRIPTION</label>';
+  h+='<div style="display:flex;gap:4px;margin-bottom:5px;flex-wrap:wrap;align-items:center">';
+  h+='<button type="button" class="btn sm ol" style="font-size:10px;padding:2px 8px" onclick="gbDescInsert(\'bullet\')" title="Toggle bullet on current line">• Bullet</button>';
+  h+='<button type="button" class="btn sm ol" style="font-size:10px;padding:2px 8px" onclick="gbDescInsert(\'subbullet\')" title="Toggle sub-bullet (or Tab on bullet line)">◦ Sub</button>';
+  h+='<button type="button" class="btn sm ol" style="font-size:10px;padding:2px 8px;text-decoration:underline" onclick="gbDescInsert(\'underline\')" title="Wrap selection in underline markers">U Underline</button>';
+  h+='<span style="font-size:9px;color:#ccc;margin-left:2px">Tab on bullet → sub-bullet · - Space → bullet</span>';
+  h+='</div>';
+  h+='<textarea id="gb-desc" rows="10" placeholder="Describe this goal. Use • bullets, ◦ sub-bullets, _underlined text_, or plain paragraphs." style="width:100%;box-sizing:border-box;font-size:12px;padding:8px 10px;border-radius:4px;border:1px solid #ddd;resize:vertical;line-height:1.6;font-family:inherit" onkeydown="gbDescTab(event)">'+esc(goalBuilderState.description||'')+'</textarea></div>';
+  h+='<div style="margin-bottom:10px"><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:4px">ORGANIZATION ALIGNMENT</label><input id="gb-org" value="'+esc(goalBuilderState.orgAlignment||'')+'" placeholder="e.g. Business Unit Build Out, Corporate Safety..." style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd"></div>';
+  h+='<div><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:4px">DUE DATE</label><input type="date" id="gb-due" value="'+esc(goalBuilderState.dueDate||'')+'" style="font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd"></div>';
+  h+='</div>';
+  h+='</div>'; // left col
+  // Right col
+  h+='<div style="display:flex;flex-direction:column;gap:16px">';
+  // Status
+  h+='<div style="background:#f5f7fa;border:1px solid #e2e8f0;border-radius:8px;padding:16px">';
+  h+='<div style="font-size:10px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Status</div>';
+  h+='<select id="gb-status" style="width:100%;font-size:13px;padding:7px 10px;border-radius:4px;border:1px solid #ddd">';
+  [['on-track','✅ On Track'],['in-progress','🔵 In Progress'],['needs-attention','⚠️ Needs Attention'],['complete','✔ Complete']].forEach(([v,l])=>{h+='<option value="'+v+'"'+(goalBuilderState.status===v?' selected':'')+'>'+l+'</option>';});
+  h+='</select></div>';
+  // Quarterly notes — full-width vertical stack
+  h+='<div style="background:#f5f7fa;border:1px solid #e2e8f0;border-radius:8px;padding:16px;flex:1">';
+  h+='<div style="font-size:10px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Quarterly Notes</div>';
+  h+='<div style="display:flex;flex-direction:column;gap:10px">';
+  ['q1','q2','q3','q4'].forEach((q,qi)=>{h+='<div><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:3px">Q'+(qi+1)+'</label><textarea id="gb-'+q+'" rows="3" placeholder="Notes…" style="width:100%;box-sizing:border-box;font-size:11px;padding:5px 7px;border-radius:4px;border:1px solid #ddd;resize:vertical;line-height:1.4">'+esc((goalBuilderState[q+'Notes'])||'')+'</textarea></div>';});
+  h+='</div></div>';
+  h+='</div>'; // right col
+  h+='</div>'; // grid
+  h+='</div></div>';
+  return h;
+}
 window.addGoalSubItem=async id=>{let g;Object.values(goals).forEach(yr=>{(yr.goals||[]).forEach(gg=>{if(gg.id===id)g=gg;});});if(!g)return;const items=[...(g.subItems||[]),''];g.subItems=items;await api('/api/goals/'+id,{method:'PATCH',body:JSON.stringify({subItems:items})});render();};
 window.editGoalSubItem=(id,idx,val)=>{let g;Object.values(goals).forEach(yr=>{(yr.goals||[]).forEach(gg=>{if(gg.id===id)g=gg;});});if(!g)return;const items=[...(g.subItems||[])];items[idx]=val;g.subItems=items;clearTimeout(goalNoteTimer);goalNoteTimer=setTimeout(()=>api('/api/goals/'+id,{method:'PATCH',body:JSON.stringify({subItems:items})}),800);};
 window.rmGoalSubItem=async(id,idx)=>{let g;Object.values(goals).forEach(yr=>{(yr.goals||[]).forEach(gg=>{if(gg.id===id)g=gg;});});if(!g)return;const items=(g.subItems||[]).filter((_,i)=>i!==idx);g.subItems=items;await api('/api/goals/'+id,{method:'PATCH',body:JSON.stringify({subItems:items})});render();};
 window.rmGoal=async id=>{if(!confirm('Remove this goal?'))return;await api('/api/goals/'+id,{method:'PATCH',body:JSON.stringify({status:'discontinued'})});goals=await api('/api/goals');render();toast('Goal removed');};
 window.uploadGoals=async()=>{const input=document.getElementById("goals-file");if(!input||!input.files||!input.files.length){alert("Please select a .docx file.");return;}const yearInput=document.getElementById("goals-year");const year=yearInput?parseInt(yearInput.value)||new Date().getFullYear():new Date().getFullYear();const fd=new FormData();fd.append("goalsFile",input.files[0]);fd.append("year",year);const res=document.getElementById("goals-import-result");if(res)res.textContent="Importing...";try{const r=await fetch("/api/goals/upload-docx",{method:"POST",body:fd});const data=await r.json();if(data.ok){if(res)res.innerHTML='<span style="color:var(--green);font-weight:600">&#10003; '+data.goalsAdded+' added, '+data.goalsUpdated+' updated.</span>';goals=await api("/api/goals");goalYear=year;toast("Goals imported!");render();}else{if(res)res.innerHTML='<span style="color:var(--red)">Error: '+esc(data.error||"Unknown")+'</span>';toast("Import failed");}}catch(e){if(res)res.innerHTML='<span style="color:var(--red)">'+esc(e.message)+'</span>';toast("Import failed");}};
-window.setGoalYear=yr=>{goalYear=yr;render();};
+window.setGoalYear=async yr=>{goalYear=yr;goalCats=await api("/api/goals/categories/"+yr).catch(()=>[]);render();};
 window.exportGoals=async yr=>{toast("Generating goals .docx...");try{const r=await api("/api/goals/export-docx",{method:"POST",body:JSON.stringify({year:yr})});if(r.ok){dlFile(r.downloadUrl,r.filename);toast("Downloaded!");}else toast("Error: "+(r.error||"unknown"));}catch(e){toast("Export failed");}};
 window.setReportQuarter=q=>{if(reportQuarters.has(q))reportQuarters.delete(q);else reportQuarters.add(q);render();};
 window.openModal=(type,extra)=>{
@@ -369,13 +584,14 @@ window.saveEP=id=>{const p=fp(id);p.name=document.getElementById("ep-n").value.t
 window.togPGPicker=id=>{pgPickerOpen=(pgPickerOpen===id)?null:id;render();};
 window.toggleProjGoal=(pid,ref)=>{const p=fp(pid);if(!p.goalRefs)p.goalRefs=[];const id=parseGoalRef(ref).id;const i=p.goalRefs.findIndex(r=>r===ref||r===id);if(i===-1)p.goalRefs.push(ref);else p.goalRefs.splice(i,1);save();};
 window.rmProjGoal=(pid,ref)=>{const p=fp(pid);if(!p.goalRefs)return;const id=parseGoalRef(ref).id;p.goalRefs=p.goalRefs.filter(r=>r!==ref&&r!==id);save();};
-function showModal(t,b){const o=document.createElement("div");o.className="mo";o.id="mo-ov";o.onclick=e=>{if(e.target===o)closeModal()};o.innerHTML='<div class="mo-c"><div class="mo-h"><span class="mo-t">'+t+'</span><button style="border:none;background:none;font-size:20px;cursor:pointer;color:#999" onclick="closeModal()">×</button></div><div class="mo-b">'+b+'</div></div>';document.body.appendChild(o);}
-window.closeModal=()=>{const e=document.getElementById("mo-ov");if(e)e.remove()};
+function showModal(t,b,cls){const o=document.createElement("div");o.className="mo";o.id="mo-ov";o.addEventListener("mousedown",e=>{if(e.target===o)closeModal()});o.innerHTML='<div class="mo-c'+(cls?' '+cls:'')+'" onmousedown="event.stopPropagation()">'+'<div class="mo-h"><span class="mo-t">'+t+'</span><button style="border:none;background:none;font-size:20px;cursor:pointer;color:#999" onclick="closeModal()">×</button></div><div class="mo-b">'+b+'</div></div>';document.body.appendChild(o);}
+window.closeModal=()=>{if(window._modalOnClose){const fn=window._modalOnClose;window._modalOnClose=null;fn().catch(()=>{}).finally(()=>{const e=document.getElementById("mo-ov");if(e)e.remove();});return;}const e=document.getElementById("mo-ov");if(e)e.remove();};
 function inputModal(title,fields,onSave){
   const b=fields.map(f=>'<div class="mf"><label class="ml">'+f.label+'</label>'+(f.rows?'<textarea class="mt" id="im-'+f.id+'" rows="'+f.rows+'" placeholder="'+(f.placeholder||'')+'"></textarea>':'<input class="mi" id="im-'+f.id+'" type="'+(f.type||'text')+'" placeholder="'+(f.placeholder||'')+'">')+'</div>').join('');
   showModal(title,b+'<div class="ma"><button class="btn sm ol" style="color:#999;border-color:#999" onclick="closeModal()">Cancel</button><button class="btn sm" style="background:var(--blue)" onclick="window._imSave()">Save</button></div>');
   window._imSave=()=>{const vals=fields.map(f=>document.getElementById('im-'+f.id)?.value.trim()||'');closeModal();onSave(...vals);};
-  setTimeout(()=>{const el=document.getElementById('im-'+fields[0].id);if(el){el.focus();el.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey)window._imSave();});}},50);
+  const el=document.getElementById('im-'+fields[0].id);
+  if(el){el.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();window._imSave();}});setTimeout(()=>{el.focus();el.select();},50);}
 }
 
 function sc(l,v,s,c){return '<div class="sc" style="border-top:3px solid '+c+'"><div class="sc-l">'+l+'</div><div class="sc-v" style="color:'+c+'">'+v+'</div><div class="sc-s">'+s+'</div></div>';}
@@ -393,7 +609,7 @@ function render(){
   h+='<div class="sum">'+sc("Projects",ap.length,"active","#0F3A85")+sc("Progress",tM?Math.round(cM/tM*100)+"%":"—",cM+"/"+tM,"#144B2D")+sc("Overdue",oM,oM?"⚠":"clear",oM?"#E1251B":"#144B2D")+sc("Blocked",bM,bM?"⚠":"none",bM?"#E1251B":"#144B2D")+sc("Due ≤14d",ap.flatMap(p=>p.milestones.filter(m=>m.status!=="complete"&&dt(m.target)>=0&&dt(m.target)<=14)).length,"upcoming","#0F3A85")+'</div>';
 
   // Tabs
-  const tabs=[["dashboard","Dashboard"],["projects","Projects"],["tasks","Tasks"],["notes","Notes"],["scan","Scan Notes"],["goals","Goals"],["timeline","Timeline"],["board","Board"],["journal","Journal"],["reports","Reports"],["archive","Archive"]];
+  const tabs=[["dashboard","Dashboard"],["projects","Projects"],["tasks","Tasks"],["notes","Notes"],["profile","Profile"],["goals","Goals"],["timeline","Timeline"],["board","Board"],["journal","Journal"],["reports","Reports"],["1on1","1:1s"],["archive","Archive"]];
   h+='<div class="tabs">'+tabs.map(([k,l],i)=>'<button class="tb'+(tab===k?" on":"")+'" onclick="setTab(\''+k+'\')" style="'+(i===0?"border-radius:6px 0 0 6px;":"")+(i===tabs.length-1?"border-radius:0 6px 6px 0;":"")+'">'+l+'</button>').join('')+'<div style="flex:1"></div>';
   if(tab==="projects")h+='<button class="btn sm" style="background:#144B2D;margin-left:8px" onclick="openModal(\'addProj\')">+ New Project</button>';
   h+='</div>';
@@ -407,8 +623,9 @@ function render(){
   else if(tab==="journal") h+=rJournal(ap);
   else if(tab==="reports") h+=rReports(ap);
   else if(tab==="archive") h+=rArchive();
-  else if(tab==="scan") h+=rScan();
   else if(tab==="notes") h+=rNotes();
+  else if(tab==="profile") h+=rProfile();
+  else if(tab==="1on1") h+=r1on1();
 
   h+='<div class="footer">'+(cfg.org?'© '+new Date().getFullYear()+' '+esc(cfg.org):'© '+new Date().getFullYear())+'</div></div>';
   document.getElementById("app").innerHTML=h;
@@ -628,11 +845,15 @@ function rReports(ap){
 }
 
 // ═══ SCAN NOTES ═══
-function rScan(){
-  let h='<div class="wrap"><div style="max-width:860px;margin:0 auto">';
+function rNotesScan(){
+  let h='<div style="padding:14px 16px;max-width:860px">';
+  h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">';
+  h+='<button class="btn sm ol" style="font-size:10px" onclick="scanReset()">&#8592; Back to Notes</button>';
+  h+='<div style="font-family:var(--fh);font-size:15px;font-weight:700;color:var(--blue)">Scan with Claude</div>';
+  if(scanNoteTitle)h+='<div style="font-size:11px;color:#888;background:#f5f7ff;border:1px solid #dce4f5;border-radius:4px;padding:3px 10px">&#128196; '+esc(scanNoteTitle)+'</div>';
+  h+='</div>';
   if(scanState==="idle"){
-    h+='<div style="margin-bottom:16px"><div style="font-family:var(--fh);font-size:18px;font-weight:700;color:var(--blue);margin-bottom:4px">Scan Notes</div>';
-    h+='<div style="font-size:12px;color:#888">Upload files or paste notes — Claude will extract projects, milestones, tasks, and journal entries for you to review before saving.</div></div>';
+    h+='<div style="font-size:12px;color:#888;margin-bottom:16px">Upload files or paste notes — Claude will extract projects, milestones, tasks, and journal entries for you to review before saving.</div>';
     h+='<div style="border:2px dashed #ddd;border-radius:8px;padding:24px;text-align:center;margin-bottom:16px;background:#fafafa">';
     h+='<div style="margin-bottom:10px;font-size:13px;color:#666">Select files to scan</div>';
     h+='<input type="file" id="scan-files" multiple accept=".txt,.docx,.xlsx,.xls,.pptx,.ppt,.jpg,.jpeg,.png,.gif,.webp,.mht,.mhtml" style="font-size:12px">';
@@ -640,16 +861,7 @@ function rScan(){
     h+='<div style="margin-bottom:16px"><div style="font-size:11px;font-weight:600;color:#888;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Or paste notes directly</div>';
     h+='<textarea id="scan-paste" rows="6" style="width:100%;font-size:12px;border:1px solid #ddd;border-radius:6px;padding:10px;resize:vertical;font-family:Arial,sans-serif;box-sizing:border-box" placeholder="Paste meeting notes, OneNote content, emails, or any text here…"></textarea></div>';
     h+='<button class="btn" style="background:var(--blue);min-width:160px" onclick="runScan()">✦ Scan with Claude</button>';
-    h+='<div style="margin-top:28px;border-top:1px solid #eee;padding-top:20px">';
-    h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
-    h+='<div style="font-size:13px;font-weight:700;color:#555">AI Memory</div>';
-    h+='<div style="font-size:10px;color:#bbb;flex:1">Claude reads this before every scan or AI request — keep it current for better suggestions.</div>';
-    h+='<button class="btn sm ol" id="mem-refresh-btn" onclick="refreshMemory()" style="color:var(--blue);border-color:var(--blue)">↻ Refresh with Claude</button>';
-    h+='<button class="btn sm" onclick="saveMemory()" style="background:var(--blue)">Save</button></div>';
-    h+='<textarea id="mem-content" rows="8" style="width:100%;font-size:12px;border:1px solid #ddd;border-radius:6px;padding:10px;resize:vertical;font-family:Arial,sans-serif;box-sizing:border-box;color:#444" placeholder="No memory yet. Click ↻ Refresh with Claude to auto-generate from your current projects and journal.">'+esc(memoryContent)+'</textarea>';
-    h+='</div>';
   } else if(scanState==="processing"){
-    if(scanNoteTitle)h+='<div style="font-size:11px;color:#888;background:#f5f7ff;border:1px solid #dce4f5;border-radius:4px;padding:3px 10px;margin-bottom:8px">&#128196; '+esc(scanNoteTitle)+'</div>';
     h+='<div style="text-align:center;padding:60px 0">';
     h+='<div style="width:36px;height:36px;border:3px solid #e0e0e0;border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px"></div>';
     h+='<div style="font-size:14px;color:var(--blue);font-weight:600">Analyzing with Claude…</div>';
@@ -659,11 +871,10 @@ function rScan(){
     const total=[s.projects,s.milestones,s.tasks,s.journal].reduce((n,a)=>n+a.length,0);
     const selCount=Object.values(scanSelected).filter(Boolean).length;
     h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap">';
-    h+='<div style="font-family:var(--fh);font-size:17px;font-weight:700;color:var(--blue)">Claude found '+total+' items</div>';
-    if(scanNoteTitle)h+='<div style="font-size:11px;color:#888;background:#f5f7ff;border:1px solid #dce4f5;border-radius:4px;padding:3px 10px">&#128196; '+esc(scanNoteTitle)+'</div>';
-    h+='<div style="flex:1"></div>';
+    h+='<div style="font-family:var(--fh);font-size:17px;font-weight:700;color:var(--blue)">Claude found '+total+' items</div><div style="flex:1"></div>';
     h+='<button class="btn sm ol" style="color:#999;border-color:#ddd" onclick="scanReset()">Start Over</button>';
     h+='<button class="btn sm" id="scan-import-btn" style="background:var(--blue)" onclick="applyScanned()">Import '+selCount+' Selected</button></div>';
+
     const projOptions=[
       ...state.projects.map(p=>({id:p.id,label:p.shortName+' — '+p.name})),
       ...s.projects.map(p=>({id:'__new__'+p.name,label:'(New) '+p.name})),
@@ -704,7 +915,7 @@ function rScan(){
     h+='<div style="padding-top:12px;text-align:right"><button class="btn sm ol" style="color:#999;border-color:#ddd;margin-right:8px" onclick="scanReset()">Start Over</button>';
     h+='<button class="btn sm" style="background:var(--blue)" onclick="applyScanned()">Import '+selCount+' Selected</button></div>';
   }
-  h+='</div></div>';return h;
+  h+='</div>';return h;
 }
 window.runScan=async()=>{
   const files=document.getElementById('scan-files')?.files;
@@ -733,9 +944,10 @@ window.toggleScan=id=>{
 window.selectAllScan=(type,checked)=>{(scanSuggestions[type]||[]).forEach(i=>{scanSelected[i._uid]=checked;});render();};
 window.editScanItem=(id,type,val)=>{const arr=scanSuggestions?(scanSuggestions[type]||[]):[];const item=arr.find(i=>i._uid===id);if(!item)return;if(type==='tasks'||type==='journal')item.text=val;else item.name=val;};
 window.editScanProject=(id,type,val)=>{const arr=scanSuggestions?(scanSuggestions[type]||[]):[];const item=arr.find(i=>i._uid===id);if(item)item.projectRef=val.startsWith('__new__')?val.replace('__new__',''):val;};
-window.scanReset=()=>{scanState='idle';scanSuggestions=null;scanSelected={};scanNoteTitle='';render();};
+window.scanReset=()=>{scanState='idle';scanSuggestions=null;scanSelected={};scanNoteTitle='';noteView='notes';render();};
 window.scanNote=async function(id){
-  scanNoteTitle='';tab='scan';scanState='processing';render();
+  if(noteEditId){await saveNoteEditor();noteEditId=null;noteEditNote=null;}
+  scanNoteTitle='';noteView='scan';scanState='processing';render();
   try{
     const r=await fetch('/api/scan/note/'+id,{method:'POST'});
     const data=await r.json();
@@ -763,7 +975,7 @@ window.applyScanned=async()=>{
     if(r.ok){
       const total=r.added.projects+r.added.milestones+r.added.tasks+r.added.journal;
       toast('Imported '+total+' item'+(total!==1?'s':'')+' — consider refreshing AI Memory');
-      scanState='idle';scanSuggestions=null;scanSelected={};
+      scanState='idle';scanSuggestions=null;scanSelected={};noteView='notes';
       await load();render();
     }else toast('Import failed: '+(r.error||'error'));
   }catch(e){toast('Import failed: '+e.message);}
@@ -796,7 +1008,7 @@ function startBriefingPoll(){
     if(!r)return;
     briefingData=r.data;briefingStatus=r.status||{status:"idle"};
     if(briefingStatus.status!=="running"){clearInterval(briefingPoll);briefingPoll=null;}
-    render();
+    if(!noteEditId) render();
   },5000);
 }
 function startElapsedTick(){
@@ -825,8 +1037,10 @@ window.resolveBriefingItem=async(jsonStr,btn)=>{
   const item=JSON.parse(jsonStr);
   btn.disabled=true;btn.textContent="✓";btn.style.color="#27ae60";btn.style.borderColor="#27ae60";
   await api("/api/briefing/resolve",{method:"POST",body:JSON.stringify(item)});
+  // Remove from in-memory data so card re-renders without it
   if(briefingData&&briefingData.items){
     briefingData.items=briefingData.items.filter(i=>!(i.from_email===item.from_email&&(i.subject||i.action_required)===item.subject));
+    const s=briefingData.summary||{};
     briefingData.summary={p1:(briefingData.items.filter(i=>i.priority==="P1").length),p2:(briefingData.items.filter(i=>i.priority==="P2").length),p3:(briefingData.items.filter(i=>i.priority==="P3").length),p4:(briefingData.items.filter(i=>i.priority==="P4").length)};
   }
   render();
@@ -897,6 +1111,54 @@ function rArchive(){
   if(!archive.length)h+='<div style="text-align:center;padding:24px;color:#bbb;font-size:12px">No closed projects yet.</div>';
   archive.forEach(a=>{h+='<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:12px"><span style="font-weight:700">'+esc(a.shortName||"")+'</span><span style="flex:1;color:#555">'+esc(a.projectName||"")+'</span><span style="color:#888;font-size:10px">'+fdf(a.closedAt?.split("T")[0])+' · '+(a.completionRate||0)+'%</span><button class="btn sm ol" style="color:var(--blue);border-color:var(--blue);padding:2px 8px;font-size:9px" onclick="viewArchive(\''+esc(a.markdownFile)+'\')">View</button></div>';});
   h+='</div></div>';return h;
+}
+
+function r1on1(){
+  if(!on1Notes.length)return '<div class="card" style="border-top:4px solid #0F3A85"><div class="card-b" style="border:none;padding-top:14px"><div style="font-family:var(--fh);font-size:16px;font-weight:700;color:#0F3A85;margin-bottom:10px">1:1 Meeting Notes</div><div style="text-align:center;padding:24px;color:#bbb;font-size:12px">No 1:1 notes found in vault.<br>Run Invoke-OneNote1on1Harvest.ps1 to import from OneNote.</div></div></div>';
+  const totalMeetings=on1Notes.reduce((s,p)=>s+p.meetings.length,0);
+  const openAI=on1Notes.reduce((s,p)=>s+p.meetings.reduce((ss,m)=>ss+m.openActions.length,0),0);
+  let h='<div>';
+  h+='<div class="sum">'+sc("People",on1Notes.length,"tracked","#0F3A85")+sc("Meetings",totalMeetings,"in vault","#144B2D")+sc("Open Items",openAI,openAI?"need follow-up":"all clear",openAI?"#E1251B":"#144B2D")+'</div>';
+  on1Notes.forEach(p=>{
+    const last=p.meetings[0];
+    const allOpen=p.meetings.flatMap(m=>m.openActions);
+    const allWatch=p.meetings.flatMap(m=>m.watchItems);
+    h+='<div class="card" style="border-top:4px solid #0F3A85;margin-bottom:10px"><div class="card-b" style="border:none;padding-top:14px">';
+    h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">';
+    h+='<div style="font-family:var(--fh);font-size:15px;font-weight:700;color:#0F3A85">'+esc(p.person)+'</div>';
+    h+='<span style="font-size:10px;background:#e8edf5;color:#0F3A85;border-radius:10px;padding:2px 8px">'+p.meetings.length+' meeting'+(p.meetings.length!==1?'s':'')+'</span>';
+    h+='<div style="flex:1"></div>';
+    h+='<span style="font-size:11px;color:#888">Last: '+fdf(last.date)+'</span>';
+    h+='</div>';
+    if(last.description)h+='<div style="font-size:12px;color:#555;margin-bottom:10px;font-style:italic">'+esc(last.description)+'</div>';
+    if(allOpen.length){
+      h+='<div style="font-size:10px;font-weight:700;color:#E1251B;letter-spacing:.5px;margin-bottom:4px">OPEN ACTION ITEMS</div>';
+      h+='<ul style="margin:0 0 10px;padding-left:16px">';
+      allOpen.slice(0,5).forEach(a=>h+='<li style="font-size:12px;color:#333;margin-bottom:3px">'+esc(a)+'</li>');
+      if(allOpen.length>5)h+='<li style="font-size:11px;color:#888">...and '+(allOpen.length-5)+' more</li>';
+      h+='</ul>';
+    }
+    if(allWatch.length){
+      h+='<div style="font-size:10px;font-weight:700;color:#C4571A;letter-spacing:.5px;margin-bottom:4px">WHAT TO WATCH</div>';
+      h+='<ul style="margin:0 0 10px;padding-left:16px">';
+      allWatch.slice(0,3).forEach(w=>h+='<li style="font-size:12px;color:#555;margin-bottom:3px">'+esc(w)+'</li>');
+      if(allWatch.length>3)h+='<li style="font-size:11px;color:#888">...and '+(allWatch.length-3)+' more</li>';
+      h+='</ul>';
+    }
+    h+='<div style="border-top:1px solid #f0f0f0;padding-top:8px">';
+    h+='<div style="font-size:10px;font-weight:700;color:#888;letter-spacing:.5px;margin-bottom:6px">MEETING HISTORY</div>';
+    p.meetings.forEach(m=>{
+      h+='<div style="display:flex;align-items:baseline;gap:8px;padding:4px 0;border-bottom:1px solid #f7f7f7;font-size:11px">';
+      h+='<span style="color:#0F3A85;font-weight:700;min-width:80px">'+fdf(m.date)+'</span>';
+      h+='<span style="color:#555;flex:1">'+esc(m.description||'—')+'</span>';
+      if(m.openActions.length)h+='<span style="color:#E1251B;font-size:10px;white-space:nowrap">'+m.openActions.length+' open</span>';
+      h+='</div>';
+    });
+    h+='</div>';
+    h+='</div></div>';
+  });
+  h+='</div>';
+  return h;
 }
 
 // ═══ TASKS ═══
@@ -1002,7 +1264,8 @@ function rGoalDetail(){
   if(linkedProjs.length){
     linkedProjs.forEach(p=>{
       const compCnt=p.milestones.filter(m=>m.status==="complete").length;
-      const {l:hLabel,c:hColor}=gh(p);
+      const hLabel=getHealth(p);
+      const hColor=hLabel==="ON TRACK"?SC.complete:hLabel==="AT RISK"?SC["at-risk"]:hLabel==="CRITICAL"?SC.blocked:SC.complete;
       const pTasks=(state.tasks||[]).filter(t=>t.project===p.id);
       h+='<div style="background:#f9fafb;border:1px solid #e8edf2;border-radius:6px;padding:12px 14px;margin-bottom:10px">';
       h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">';
@@ -1048,6 +1311,7 @@ function rGoalDetail(){
   return h;
 }
 function rGoals(){
+  if(goalBuilderOpen) return rGoalBuilder();
   if(goalDetailView) return rGoalDetail();
   const yr=goalYear;
   const yrData=goals[yr]||null;
@@ -1067,6 +1331,7 @@ function rGoals(){
   h+='</div>';
   if(allYears.length>1){h+='<select style="font-size:11px;padding:3px 6px;border:1px solid #ddd;border-radius:4px" onchange="setGoalYear(parseInt(this.value))">'+allYears.map(y=>'<option value="'+y+'"'+(y===yr?' selected':'')+'>'+y+'</option>').join('')+'</select>';}
   if(yrData)h+='<button class="btn sm ol" style="color:#511207;border-color:#511207" onclick="exportGoals('+yr+')">&#11015; Export .docx</button>';
+  h+='<button class="btn sm ol" style="color:#555;border-color:#ccc" onclick="toggleCatMgr()">&#9881; Categories</button>';
   h+='<button class="btn sm" style="background:var(--green)" onclick="openAddGoalModal(\'\')">+ Add Goal</button>';
   h+='</div></div>';
 
@@ -1078,6 +1343,18 @@ function rGoals(){
   h+='<div style="display:flex;align-items:center;gap:4px"><label style="font-size:11px;color:#666;white-space:nowrap">Year:</label><input type="number" id="goals-year" value="'+yr+'" min="2020" max="2040" style="width:68px;font-size:12px;padding:4px 6px;border:1px solid #ddd;border-radius:4px"></div>';
   h+='<button class="btn sm" style="background:var(--blue)" onclick="uploadGoals()">Parse &amp; Import</button>';
   h+='</div><div id="goals-import-result" style="margin-top:6px;font-size:11px"></div></div>';
+
+  // Category manager (collapsible)
+  if(goalCatMgrOpen){
+    h+='<div style="background:#f5f7fa;border-radius:8px;padding:14px 16px;margin-bottom:16px;border:1px solid #e2e8f0">';
+    h+='<div style="font-size:10px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Manage Categories</div>';
+    h+='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">';
+    if(goalCats.length){goalCats.forEach(c=>{h+='<div style="display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid #ddd;border-radius:12px;padding:3px 10px;font-size:11px">'+esc(c)+'<button class="x-btn" style="font-size:12px;color:#bbb" onclick="rmGoalCat(\''+esc(c).replace(/'/g,"\\'")+'\')" title="Remove">×</button></div>';});}
+    else{h+='<span style="font-size:11px;color:#aaa;font-style:italic">No categories yet</span>';}
+    h+='</div>';
+    h+='<div style="display:flex;gap:6px"><input id="cat-new-inp" placeholder="New category name…" style="flex:1;font-size:12px;padding:5px 8px;border-radius:4px;border:1px solid #ddd" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addGoalCat();}"><button class="btn sm" style="background:var(--green)" onclick="addGoalCat()">+ Add</button></div>';
+    h+='</div>';
+  }
 
   if(!allG.length){
     h+='<div style="text-align:center;padding:32px;color:#bbb;font-size:13px">No goals for '+yr+'.<br><span style="font-size:11px">Upload a .docx or click "+ Add Goal" to get started.</span></div></div></div>';
@@ -1091,30 +1368,31 @@ function rGoals(){
     const catGs=allG.filter(g=>g.category===cat);
     h+='<div style="margin-bottom:24px"><div class="wd-cat-hd"><span>'+esc(cat)+'</span><button style="font-size:10px;color:var(--green);border:1px solid var(--green);background:none;border-radius:10px;padding:2px 8px;cursor:pointer;font-weight:600" onclick="openAddGoalModal(\''+esc(cat).replace(/'/g,"\\'")+'\')">+ Add</button></div>';
     catGs.forEach(g=>{
-      const [gc]=GS[g.status]||GS["on-track"];
+      const [gc,gl]=GS[g.status]||GS["on-track"];
       const isQExp=expGoals[g.id];
+      const descVal=g.description||(g.subItems&&g.subItems.length?g.subItems.map(s=>'• '+s).join('\n'):'');
       h+='<div class="wd-card">';
-      // Header: Goal text
-      h+='<div class="wd-card-hd"><div class="wd-label" style="margin-bottom:5px">Goal</div><input class="ie" style="font-size:14px;font-weight:600;color:#212121;width:100%" value="'+esc(g.text)+'" oninput="editGoalField(\''+g.id+'\',\'text\',this.value)"></div>';
+      // Header: goal text (read-only) + Edit button
+      h+='<div class="wd-card-hd" style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">';
+      h+='<div style="font-size:14px;font-weight:600;color:#212121;line-height:1.4;flex:1">'+esc(g.text)+'</div>';
+      h+='<button style="font-size:10px;color:var(--green);border:1px solid var(--green);background:none;border-radius:10px;padding:2px 8px;cursor:pointer;white-space:nowrap;flex-shrink:0;margin-right:4px" onclick="setGoalDetail(makeGoalRef(\''+g.id+'\','+yr+'))">&#128269; View</button>';
+      h+='<button style="font-size:10px;color:var(--blue);border:1px solid var(--blue);background:none;border-radius:10px;padding:2px 8px;cursor:pointer;white-space:nowrap;flex-shrink:0" onclick="openGoalEditor(\''+g.id+'\')">&#9998; Edit</button>';
+      h+='</div>';
       // Body
       h+='<div class="wd-card-body">';
-      const descVal=g.description||(g.subItems&&g.subItems.length?(g.subItems).map(s=>'• '+s).join('\n'):'');
-      h+='<div style="margin-bottom:14px"><div class="wd-label">Description</div>';
-      h+='<textarea class="ie-desc" style="font-size:12px;min-height:80px" placeholder="Describe this goal... (use • for bullets)" oninput="editGoalField(\''+g.id+'\',\'description\',this.value)" onkeydown="goalDescTab(event,\''+g.id+'\')">'+esc(descVal)+'</textarea>';
-      h+='</div>';
-      // 3-col: Status | Organization Alignment (editable) | Due Date
+      if(descVal){h+='<div style="margin-bottom:12px"><div class="wd-label">Description</div><div style="white-space:pre-wrap;font-size:12px;line-height:1.6;color:#444;background:#f9f9f9;border-radius:4px;padding:8px 10px">'+esc(descVal)+'</div></div>';}
+      // 3-col: Status | Org | Due Date (all read-only)
       h+='<div class="wd-3col">';
-      h+='<div><div class="wd-label">Status</div><select class="wd-status-sel" style="border-color:'+gc+';color:'+gc+'" onchange="updateGoalStatus(\''+g.id+'\',this.value)">';
-      [["in-progress","In Progress"],["on-track","On Track"],["needs-attention","Needs Attention"],["complete","Complete"]].forEach(([v,l])=>{h+='<option value="'+v+'"'+(g.status===v?" selected":"")+'>'+l+'</option>';});
-      h+='</select></div>';
-      h+='<div><div class="wd-label">Organization Alignment</div><input class="ie" style="font-size:12px;color:#555" value="'+esc(g.orgAlignment||'')+'" placeholder="e.g. Corporate strategy..." oninput="editGoalField(\''+g.id+'\',\'orgAlignment\',this.value)"></div>';
-      h+='<div><div class="wd-label">Due Date</div><input type="date" class="ie-date" style="font-size:12px" value="'+(g.dueDate||'')+'" onchange="editGoalField(\''+g.id+'\',\'dueDate\',this.value)"></div>';
+      h+='<div><div class="wd-label">Status</div><span style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;border:1px solid '+gc+';color:'+gc+'">'+esc(gl)+'</span></div>';
+      h+='<div><div class="wd-label">Organization Alignment</div><div style="font-size:12px;color:#555;line-height:1.4;padding-top:2px">'+esc(g.orgAlignment||'—')+'</div></div>';
+      const dd=g.dueDate?g.dueDate.replace(/(\d{4})-(\d{2})-(\d{2})/,'$2/$3/$1'):'—';
+      h+='<div><div class="wd-label">Due Date</div><div style="font-size:12px;color:#555;padding-top:2px">'+dd+'</div></div>';
       h+='</div>';
-      // Quarterly notes (collapsible)
+      // Quarterly notes collapsible (read-only)
       h+='<hr class="wd-sep">';
       h+='<div style="display:flex;justify-content:space-between;align-items:center">';
       h+='<button style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.4px;border:none;background:none;cursor:pointer;padding:0" onclick="togGoal(\''+g.id+'\')"><span style="margin-right:4px">'+(isQExp?"▾":"▸")+'</span>Quarterly Notes</button>';
-      h+='<div style="display:flex;gap:8px"><button style="font-size:10px;color:var(--green);border:1px solid var(--green);background:none;border-radius:10px;padding:2px 8px;cursor:pointer" onclick="setGoalDetail(makeGoalRef(\''+g.id+'\',yr))">&#128269; View</button><button style="font-size:10px;color:#ccc;border:none;background:none;cursor:pointer" onclick="rmGoal(\''+g.id+'\')">Remove</button></div>';
+      h+='<button style="font-size:10px;color:#ccc;border:none;background:none;cursor:pointer" onclick="rmGoal(\''+g.id+'\')">Remove</button>';
       h+='</div>';
       if(isQExp){
         const qSel=goalQSel[g.id]||["q1","q2","q3","q4"];
@@ -1128,7 +1406,10 @@ function rGoals(){
         h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
         ["q1","q2","q3","q4"].forEach((q,qi)=>{
           if(!qSel.includes(q))return;
-          h+='<div><div class="wd-label">Q'+(qi+1)+' Notes</div><textarea style="width:100%;font-size:11px;padding:5px 7px;border:1px solid #ddd;border-radius:4px;resize:vertical;min-height:52px;line-height:1.4" placeholder="Notes..." oninput="updateGoalNotes(\''+g.id+'\',\''+q+'Notes\',this.value)">'+esc(g[q+"Notes"]||"")+'</textarea></div>';
+          const qv=g[q+"Notes"]||"";
+          h+='<div><div class="wd-label">Q'+(qi+1)+'</div>';
+          h+=qv?'<div style="white-space:pre-wrap;font-size:11px;color:#555;line-height:1.4;background:#f9f9f9;border-radius:4px;padding:5px 7px">'+esc(qv)+'</div>':'<div style="font-size:11px;color:#ccc;font-style:italic;padding:3px 0">No notes</div>';
+          h+='</div>';
         });
         h+='</div></div>';
       }
@@ -1194,7 +1475,7 @@ window.mpFilter=function(id,q){
 window.mpPick=function(id,val){
   if(!window._mpSel[id])window._mpSel[id]=new Set();
   if(window._mpSel[id].has(val))window._mpSel[id].delete(val);else window._mpSel[id].add(val);
-  const cb=document.getElementById(id+'-cb-'+val.replace(/[^a-zA-Z0-9_-]/g,'_'));
+  const cb=document.getElementById(id+'-cb-'+val);
   if(cb)cb.checked=window._mpSel[id].has(val);
   window.mpRefreshTrigger(id);
 };
@@ -1229,6 +1510,56 @@ function buildPicker(id,items,selected,placeholder){
   return h;
 }
 
+// ═══ NOTES ═══
+function patchNote(id,data){api("/api/notes/"+id,{method:"PATCH",body:JSON.stringify(data)}).then(()=>load());}
+window.toggleNotePin=id=>{const n=notes.find(n=>n.id===id);if(!n)return;n.pinned=!n.pinned;patchNote(id,{pinned:n.pinned});};
+window.rmNote=async id=>{if(!confirm("Delete note?"))return;await api("/api/notes/"+id,{method:"DELETE"});await load();};
+window.addNoteToMemory=id=>{const n=notes.find(n=>n.id===id);if(!n)return;const addition="\n\n--- NOTE: "+n.title+" ---\n"+n.content;memoryContent+=addition;const ta=document.getElementById("mem-content");if(ta)ta.value=memoryContent;api("/api/memory",{method:"PUT",body:JSON.stringify({content:memoryContent})});toast("Added to AI Memory");};
+window.downloadNotesDocx=async function(){
+  const ids=[...noteExportSel];
+  if(!ids.length){toast('Select at least one note');return;}
+  toast('Building .docx…');
+  try{
+    const r=await fetch('/api/notes/export-docx',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({noteIds:ids})});
+    if(!r.ok){const e=await r.json();throw new Error(e.error||'Export failed');}
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    const cd=r.headers.get('Content-Disposition')||'';
+    const m=cd.match(/filename="?([^";]+)"?/);
+    a.download=m?m[1]:'notes-export.docx';
+    a.href=url;a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    noteExportMode=false;noteExportSel=new Set();
+    toast('Downloaded '+ids.length+' note'+(ids.length!==1?'s':'')+' as .docx');
+    render();
+  }catch(e){toast('Export failed: '+e.message);}
+};
+window.setNoteFilter=(nb,sec)=>{nFilter={nb,sec};render();};
+window.togNoteNb=nb=>{noteNbOpen[nb]=!noteNbOpen[nb];render();};
+window.setNoteSearch=function(val,pos){noteSearch=val;render();requestAnimationFrame(()=>{const el=document.getElementById('note-srch');if(el){el.focus();try{el.selectionStart=el.selectionEnd=pos;}catch(e){}}});};
+window.moveNb=function(nb,dir){const allNbsRaw=[...new Set(notes.map(n=>n.notebook).filter(Boolean))];allNbsRaw.forEach(n=>{if(!noteNbOrder.includes(n))noteNbOrder.push(n);});const i=noteNbOrder.indexOf(nb);if(i<0)return;const j=i+dir;if(j<0||j>=noteNbOrder.length)return;[noteNbOrder[i],noteNbOrder[j]]=[noteNbOrder[j],noteNbOrder[i]];localStorage.setItem('noteNbOrder',JSON.stringify(noteNbOrder));render();};
+window.moveSec=function(nb,sec,dir){const allSecsList=[...new Set(notes.filter(n=>n.notebook===nb).map(n=>n.section).filter(Boolean))];if(!noteSecOrder[nb])noteSecOrder[nb]=[];allSecsList.forEach(s=>{if(!noteSecOrder[nb].includes(s))noteSecOrder[nb].push(s);});const i=noteSecOrder[nb].indexOf(sec);if(i<0)return;const j=i+dir;if(j<0||j>=noteSecOrder[nb].length)return;[noteSecOrder[nb][i],noteSecOrder[nb][j]]=[noteSecOrder[nb][j],noteSecOrder[nb][i]];localStorage.setItem('noteSecOrder',JSON.stringify(noteSecOrder));render();};
+window.saveNoteEditor=async function(){
+  const titleEl=document.getElementById('nm-title');if(!titleEl)return;
+  const title=titleEl.value.trim()||'Untitled';
+  const nb=(document.getElementById('nm-nb')?.value||'').trim();
+  const sec=(document.getElementById('nm-sec')?.value||'').trim();
+  const goalRefs=collectAllNmGoalRefs();const projectRefs=mpGetVals('nm-proj');
+  const id=noteEditId==='new'?null:noteEditId;
+  const hasHtml=!!(noteEditNote?.contentHtml);
+  let body;
+  if(window._nmEditMode){const content=document.getElementById('nm-content')?.value||'';body={title,notebook:nb,section:sec,content,contentHtml:'',goalRefs,projectRefs};}
+  else{body={title,notebook:nb,section:sec,goalRefs,projectRefs};if(!hasHtml)body.content=document.getElementById('nm-content')?.value||'';}
+  window._nmEditMode=false;
+  if(id){await api('/api/notes/'+id,{method:'PATCH',body:JSON.stringify(body)});}
+  else if(title!=='Untitled'||body.content){await api('/api/notes',{method:'POST',body:JSON.stringify({...body,content:document.getElementById('nm-content')?.value||''})});}
+  await load();toast('Saved');
+};
+window.closeNoteEditor=async function(){
+  await saveNoteEditor();
+  noteEditId=null;noteEditNote=null;render();
+};
 function rNmGoalsPicker(yr,goalItems,selected){
   const availYears=Object.keys(goals).map(Number).filter(y=>(goals[y]?.goals||[]).some(g=>g.status!=='discontinued')).sort((a,b)=>b-a);
   let h='';
@@ -1258,77 +1589,81 @@ window.collectAllNmGoalRefs=function(){
   Object.entries(cache).forEach(([yr,refs])=>{if(parseInt(yr)!==cur)refs.forEach(r=>result.add(r));});
   return [...result];
 };
-
-// ═══ NOTES ═══
-function patchNote(id,data){api("/api/notes/"+id,{method:"PATCH",body:JSON.stringify(data)}).then(()=>load());}
-window.toggleNotePin=id=>{const n=notes.find(n=>n.id===id);if(!n)return;n.pinned=!n.pinned;patchNote(id,{pinned:n.pinned});};
-window.rmNote=async id=>{if(!confirm("Delete note?"))return;await api("/api/notes/"+id,{method:"DELETE"});await load();};
-window.addNoteToMemory=id=>{const n=notes.find(n=>n.id===id);if(!n)return;const addition="\n\n--- NOTE: "+n.title+" ---\n"+n.content;memoryContent+=addition;const ta=document.getElementById("mem-content");if(ta)ta.value=memoryContent;api("/api/memory",{method:"PUT",body:JSON.stringify({content:memoryContent})});toast("Added to AI Memory");};
-window.setNoteFilter=(nb,sec)=>{nFilter={nb,sec};render();};
-window.togNoteNb=nb=>{noteNbOpen[nb]=!noteNbOpen[nb];render();};
-window.openNoteModal=async function(id){
-  let existing=id?notes.find(n=>n.id===id):null;
-  // Fetch full note (includes contentHtml loaded from file)
-  if(id){const r=await api('/api/notes/'+id).catch(()=>null);if(r?.ok)existing=r.note;}
-  const nb=existing?.notebook||(nFilter.nb||"");
-  const sec=existing?.section||(nFilter.sec||"");
+function rNoteEditor(){
+  const id=noteEditId==='new'?null:noteEditId;
+  const existing=noteEditNote;
+  const nb=existing?.notebook||(nFilter.nb||'');
+  const sec=existing?.section||(nFilter.sec||'');
   const allNbs=[...new Set(notes.map(n=>n.notebook).filter(Boolean))];
   const secsByNb={};notes.forEach(n=>{if(n.notebook&&n.section){if(!secsByNb[n.notebook])secsByNb[n.notebook]=new Set();secsByNb[n.notebook].add(n.section);}});
   const allSecs=nb&&secsByNb[nb]?[...secsByNb[nb]]:[...new Set(notes.map(n=>n.section).filter(Boolean))];
-  const allGoals=getAllGoals();
+  const nmGY=window._nmGoalYear||topGoalYear();
   const allProjs=state.projects.filter(p=>!p.archived);
   const gRefsRaw=existing?.goalRefs||[];
   const gRefs=gRefsRaw.map(ref=>{if(ref.includes(':'))return ref;for(const[yr,yrData]of Object.entries(goals)){if((yrData.goals||[]).some(g=>g.id===ref))return yr+':'+ref;}return ref;});
   const pRefs=existing?.projectRefs||[];
-  const nmGY=window._nmGoalYear=topGoalYear();
-  window._nmGoalYearSel={};
-  gRefs.forEach(ref=>{const{year:ry}=parseGoalRef(ref);if(!window._nmGoalYearSel[ry])window._nmGoalYearSel[ry]=[];window._nmGoalYearSel[ry].push(ref);});
-  const yrGoals_nm=((goals[nmGY]||{}).goals||[]).filter(g=>g.status!=='discontinued');
-  const nmGoalItems=yrGoals_nm.map(g=>{const cat=(g.category||'').split(/[–—-]/).pop().trim();return{val:makeGoalRef(g.id,nmGY),label:(cat?cat+' — ':'')+( g.text||'').slice(0,55)};});
-  const curYrGRefs=window._nmGoalYearSel[nmGY]||[];
-  const projItems=allProjs.map(p=>({val:p.id,label:p.shortName+" — "+p.name}));
+  const yrGoals=((goals[nmGY]||{}).goals||[]).filter(g=>g.status!=='discontinued');
+  const goalItems=yrGoals.map(g=>{const cat=(g.category||'').split(/[–—-]/).pop().trim();return{val:makeGoalRef(g.id,nmGY),label:(cat?cat+' — ':'')+( g.text||'').slice(0,55)};});
+  const curYrGRefs=gRefs.filter(ref=>parseGoalRef(ref).year===nmGY);
+  const projItems=allProjs.map(p=>({val:p.id,label:p.shortName+' — '+p.name}));
   const hasHtml=!!(existing?.contentHtml);
-  let mh='<div style="display:flex;flex-direction:column;gap:10px">';
-  mh+='<input id="nm-title" placeholder="Note title" value="'+esc(existing?.title||"")+'" style="font-size:14px;font-weight:600;padding:8px 10px;border-radius:4px;border:1px solid #ddd;font-family:var(--fh)">';
-  mh+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
-  mh+='<div><label style="font-size:10px;color:#888;font-weight:600">NOTEBOOK</label><input id="nm-nb" list="nm-nb-list" value="'+esc(nb)+'" placeholder="e.g. Work" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd"><datalist id="nm-nb-list">'+allNbs.map(n=>'<option value="'+esc(n)+'">').join('')+'</datalist></div>';
-  mh+='<div><label style="font-size:10px;color:#888;font-weight:600">SECTION</label><input id="nm-sec" list="nm-sec-list" value="'+esc(sec)+'" placeholder="e.g. Work Projects" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd"><datalist id="nm-sec-list">'+allSecs.map(s=>'<option value="'+esc(s)+'">').join('')+'</datalist></div>';
-  mh+='</div>';
+  let h='<div style="display:flex;flex-direction:column;height:100%;overflow:hidden">';
+  // Top toolbar
+  h+='<div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid #f0e0dd;background:#fff;flex-shrink:0;flex-wrap:wrap">';
+  h+='<button class="btn sm ol" style="font-size:10px" onclick="closeNoteEditor()">← Back</button>';
+  h+='<span style="font-size:11px;color:#aaa">'+(existing?esc(existing.notebook||'')+' › '+esc(existing.section||''):'New Note')+'</span>';
+  h+='<div style="flex:1"></div>';
+  if(existing){
+    h+='<button class="btn sm ol" style="color:var(--gold);border-color:var(--gold);font-size:10px" onclick="toggleNotePin(\''+id+'\')">📌 '+(existing.pinned?'Unpin':'Pin')+'</button>';
+    h+='<button class="btn sm ol" style="color:var(--green);border-color:var(--green);font-size:10px" onclick="addNoteToMemory(\''+id+'\')">+ Memory</button>';
+    h+='<button class="btn sm ol" style="color:#5B4FCF;border-color:#5B4FCF;font-size:10px" onclick="scanNote(\''+id+'\')">&#10022; Scan</button>';
+    h+='<button class="btn sm ol" style="color:var(--red);border-color:var(--red);font-size:10px" onclick="if(confirm(\'Delete?\'))rmNote(\''+id+'\')">Delete</button>';
+  }
+  h+='<button class="btn sm" style="background:var(--blue);font-size:10px" onclick="saveNoteEditor()">Save</button>';
+  h+='</div>';
+  // Scrollable body
+  h+='<div style="flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:14px">';
+  h+='<input id="nm-title" placeholder="Note title" value="'+esc(existing?.title||'')+'" style="font-size:22px;font-weight:700;padding:4px 0;border:none;border-bottom:2px solid #e0e0e0;font-family:var(--fh);outline:none;width:100%;background:transparent">';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+  h+='<div><label style="font-size:10px;color:#888;font-weight:600">NOTEBOOK</label><input id="nm-nb" list="nm-nb-list" value="'+esc(nb)+'" placeholder="e.g. Work" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd"><datalist id="nm-nb-list">'+allNbs.map(n=>'<option value="'+esc(n)+'">').join('')+'</datalist></div>';
+  h+='<div><label style="font-size:10px;color:#888;font-weight:600">SECTION</label><input id="nm-sec" list="nm-sec-list" value="'+esc(sec)+'" placeholder="e.g. Work Projects" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd"><datalist id="nm-sec-list">'+allSecs.map(s=>'<option value="'+esc(s)+'">').join('')+'</datalist></div>';
+  h+='</div>';
   if(hasHtml){
-    // Rich content note: show rendered HTML, allow editing plain text via toggle
-    mh+='<div id="nm-content-wrap">';
-    mh+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
-    mh+='<label style="font-size:10px;color:#888;font-weight:600">CONTENT</label>';
-    mh+='<button id="nm-edit-btn" class="btn sm ol" style="font-size:9px;padding:2px 7px" onclick="window._nmEditMode=!window._nmEditMode;document.getElementById(\'nm-html-view\').style.display=window._nmEditMode?\'none\':\'block\';document.getElementById(\'nm-content\').style.display=window._nmEditMode?\'block\':\'none\';this.textContent=window._nmEditMode?\'View\':\'Edit text\'">Edit text</button>';
-    mh+='<span style="font-size:9px;color:#aaa">Editing plain text clears rich formatting & images</span>';
-    mh+='</div>';
-    mh+='<div id="nm-html-view" style="font-size:12px;border:1px solid #e8e8e8;border-radius:4px;padding:12px;max-height:300px;overflow-y:auto;background:#fafafa;line-height:1.6"></div>';
-    mh+='<textarea id="nm-content" rows="11" placeholder="Note content..." style="font-size:12px;padding:8px 10px;border-radius:4px;border:1px solid #ddd;resize:vertical;line-height:1.6;display:none;width:100%;box-sizing:border-box">'+esc(existing?.content||"")+'</textarea>';
-    mh+='</div>';
+    h+='<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><label style="font-size:10px;color:#888;font-weight:600">CONTENT</label><button id="nm-edit-btn" class="btn sm ol" style="font-size:9px;padding:2px 7px" onclick="window._nmEditMode=!window._nmEditMode;document.getElementById(\'nm-html-view\').style.display=window._nmEditMode?\'none\':\'block\';document.getElementById(\'nm-content\').style.display=window._nmEditMode?\'block\':\'none\';this.textContent=window._nmEditMode?\'View\':\'Edit text\'">Edit text</button><span style="font-size:9px;color:#aaa">Editing clears rich formatting</span></div>';
+    h+='<div id="nm-html-view" style="font-size:13px;border:1px solid #e8e8e8;border-radius:6px;padding:14px;overflow-y:auto;background:#fafafa;line-height:1.7;min-height:300px"></div>';
+    h+='<textarea id="nm-content" rows="20" placeholder="Note content..." style="display:none;font-size:13px;padding:10px 12px;border-radius:6px;border:1px solid #ddd;resize:vertical;line-height:1.7;width:100%;box-sizing:border-box">'+esc(existing?.content||'')+'</textarea></div>';
   }else{
-    mh+='<textarea id="nm-content" rows="11" placeholder="Note content..." style="font-size:12px;padding:8px 10px;border-radius:4px;border:1px solid #ddd;resize:vertical;line-height:1.6">'+esc(existing?.content||"")+'</textarea>';
+    h+='<div><label style="font-size:10px;color:#888;font-weight:600">CONTENT</label><textarea id="nm-content" rows="20" placeholder="Note content..." style="display:block;margin-top:4px;font-size:13px;padding:10px 12px;border-radius:6px;border:1px solid #ddd;resize:vertical;line-height:1.7;width:100%;box-sizing:border-box">'+esc(existing?.content||'')+'</textarea></div>';
   }
-  mh+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-  mh+='<div><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:4px">GOALS</label><div id="nm-goals-container">'+rNmGoalsPicker(nmGY,nmGoalItems,curYrGRefs)+'</div></div>';
-  mh+='<div><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:4px">PROJECTS</label>'+buildPicker('nm-proj',projItems,pRefs,'No projects linked')+'</div>';
-  mh+='</div>';
-  const acts=existing?'<button class="btn sm ol" style="color:var(--gold);border-color:var(--gold)" onclick="toggleNotePin(\''+id+'\');closeModal()">&#128204; '+(existing.pinned?'Unpin':'Pin')+'</button><button class="btn sm ol" style="color:var(--green);border-color:var(--green)" onclick="addNoteToMemory(\''+id+'\');closeModal()">+ Memory</button><button class="btn sm ol" style="color:#5B4FCF;border-color:#5B4FCF" onclick="closeModal();scanNote(\''+id+'\')">&#10022; Scan</button><button class="btn sm ol" style="color:var(--red);border-color:var(--red)" onclick="rmNote(\''+id+'\');closeModal()">Delete</button>':'';
-  // Save: if editing mode, clear contentHtml. If not, preserve it (send nothing for content fields).
-  const saveAct='(async function(){window._nmEditMode=window._nmEditMode||false;const title=document.getElementById(\'nm-title\').value.trim()||\'Untitled\';const nb=document.getElementById(\'nm-nb\').value.trim();const sec=document.getElementById(\'nm-sec\').value.trim();const goalRefs=collectAllNmGoalRefs();const projectRefs=mpGetVals(\'nm-proj\');let body;if(window._nmEditMode){const content=document.getElementById(\'nm-content\').value;body={title,notebook:nb,section:sec,content,contentHtml:\'\',goalRefs,projectRefs};}else{body={title,notebook:nb,section:sec,goalRefs,projectRefs};if(!'+hasHtml+')body.content=document.getElementById(\'nm-content\').value;}'+(existing?'await api(\'/api/notes/'+id+'\',{method:\'PATCH\',body:JSON.stringify(body)});':'await api(\'/api/notes\',{method:\'POST\',body:JSON.stringify({...body,content:document.getElementById(\'nm-content\').value})});')+'window._nmEditMode=false;closeModal();await load();toast(\'Saved\');})()';
-  mh+='<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-top:6px;border-top:1px solid #f0f0f0">'+acts+'<div style="flex:1"></div><button class="btn sm" style="background:var(--blue)" onclick="'+saveAct+'">Save</button></div>';
-  mh+='</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+  h+='<div><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:4px">GOALS</label><div id="nm-goals-container">'+rNmGoalsPicker(nmGY,goalItems,curYrGRefs)+'</div></div>';
+  h+='<div><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:4px">PROJECTS</label>'+buildPicker('nm-proj',projItems,pRefs,'No projects linked')+'</div>';
+  h+='</div>';
+  h+='</div></div>';
+  return h;
+}
+window.openNoteModal=async function(id){
+  noteEditId=id||'new';
   window._nmEditMode=false;
-  showModal('Note',mh);
-  // Inject HTML content into the rendered view (after DOM is ready)
-  if(hasHtml){
-    requestAnimationFrame(()=>{const v=document.getElementById('nm-html-view');if(v)v.innerHTML=existing.contentHtml;});
-  }
+  window._nmGoalYear=null;window._nmGoalYearSel={};
+  if(id){
+    const r=await api('/api/notes/'+id).catch(()=>null);
+    noteEditNote=r?.ok?r.note:(notes.find(n=>n.id===id)||null);
+    const gRefsRaw=noteEditNote?.goalRefs||[];
+    const gRefs=gRefsRaw.map(ref=>{if(ref.includes(':'))return ref;for(const[yr,yrData]of Object.entries(goals)){if((yrData.goals||[]).some(g=>g.id===ref))return yr+':'+ref;}return ref;});
+    const curYr=topGoalYear();
+    gRefs.forEach(ref=>{const{year}=parseGoalRef(ref);if(year!==curYr){if(!window._nmGoalYearSel[year])window._nmGoalYearSel[year]=[];window._nmGoalYearSel[year].push(ref);}});
+  } else {noteEditNote=null;}
+  setTab('notes');render();
+  if(noteEditNote?.contentHtml){requestAnimationFrame(()=>{const v=document.getElementById('nm-html-view');if(v)v.innerHTML=noteEditNote.contentHtml;});}
 };
 window._impFiles=[];
 window.impAddFiles=function(newFiles){
   Array.from(newFiles).forEach(f=>window._impFiles.push(f));
   const list=document.getElementById('imp-file-list');
-  if(list){list.innerHTML=window._impFiles.map((f,i)=>'<div class="imp-file-row"><span style="flex:1">'+esc(f.name)+'</span><span style="color:#aaa;font-size:10px">'+Math.round(f.size/1024)+'KB</span><button onclick="window._impFiles.splice('+i+',1);window.impAddFiles([])" style="background:none;border:none;cursor:pointer;color:#ccc;font-size:13px;padding:0;margin-left:6px">×</button></div>').join('');}
+  if(list){
+    list.innerHTML=window._impFiles.map((f,i)=>'<div class="imp-file-row"><span style="flex:1">'+esc(f.name)+'</span><span style="color:#aaa;font-size:10px">'+Math.round(f.size/1024)+'KB</span><button onclick="window._impFiles.splice('+i+',1);window.impAddFiles([])" style="background:none;border:none;cursor:pointer;color:#999;font-size:13px;padding:0;margin-left:6px">×</button></div>').join('');
+  }
 };
 window.runNoteImport=async function(){
   const out=document.getElementById("imp-out");
@@ -1437,6 +1772,7 @@ window.saveMhtNotes=async function(){
   }
   window._impFiles=[];window._mhtPages=[];
   noteView='notes';await load();toast('Imported '+saved+' notes from OneNote');
+  triggerProfileGenerate(true);
 };
 // ═══ ZIP IMPORT TREE UI ═══
 window._zipPages=[];window._zipGroups=[];
@@ -1527,8 +1863,9 @@ window.saveZipNotes=async function(){
   }
   window._impFiles=[];window._zipPages=[];window._zipGroups=[];
   noteView='notes';await load();toast('Imported '+saved+' notes');
+  triggerProfileGenerate(true);
 };
-async function runClaudeImport(files,out,append){
+window.runClaudeImport=async function(files,out,append){
   function chunkText(text,max=5000){const paras=text.split(/\n\n+/);const chunks=[];let cur="";for(const p of paras){if(cur.length+p.length>max&&cur){chunks.push(cur);cur="";}cur+=(cur?"\n\n":"")+p;}if(cur)chunks.push(cur);return chunks;}
   const chunks=[];files.forEach(f=>{chunkText(f.text).forEach(c=>{chunks.push({filename:f.filename,text:c});});});
   const statusEl=document.createElement('div');statusEl.style.cssText='color:var(--purple);font-size:12px;padding:10px 0';statusEl.textContent='✦ Parsing chunk 1/'+chunks.length+'…';
@@ -1558,12 +1895,13 @@ async function runClaudeImport(files,out,append){
   if(out)out.appendChild(resultEl);
   statusEl.remove();
   out.querySelectorAll("input[data-i]").forEach(el=>{el.addEventListener("input",()=>{window._importNotes[+el.dataset.i][el.dataset.f]=el.value;});});
-}
+};
 window.saveImportedNotes=async function(){
   const notes_=window._importNotes||[];if(!notes_.length)return;
   for(const n of notes_){await api("/api/notes",{method:"POST",body:JSON.stringify({title:n.title,notebook:n.notebook,section:n.section,content:n.content,goalRefs:[],projectRefs:[]})});}
   window._impFiles=[];window._importNotes=[];
   noteView="notes";await load();toast("Saved "+notes_.length+" notes");
+  triggerProfileGenerate(true);
 };
 function getPinnedNotesContext(){
   const pinned=notes.filter(n=>n.pinned);
@@ -1572,6 +1910,179 @@ function getPinnedNotesContext(){
   pinned.forEach(n=>{ctx+="\n["+n.notebook+" / "+n.section+"] "+n.title+"\n"+n.content+"\n";});
   return ctx;
 }
+// ═══ PROFILE ═══
+let _profileGenerating=false;
+window.triggerProfileGenerate=async function(silent){
+  if(_profileGenerating)return;
+  _profileGenerating=true;
+  if(!silent)toast('Analyzing notes…');
+  try{
+    const r=await api('/api/profile/generate',{method:'POST'});
+    if(r.ok){profile=r.profile;if(tab==='profile')render();if(!silent)toast('Profile updated');}
+  }catch(e){}
+  _profileGenerating=false;
+};
+function rProfile(){
+  if(profileEditMode)return rProfileEdit();
+  let h='<div class="card" style="border-top:4px solid #5B4FCF">';
+  h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">';
+  h+='<div style="font-family:var(--fh);font-size:18px;font-weight:700;color:#5B4FCF">Knowledge Profile</div>';
+  h+='<div style="flex:1"></div>';
+  if(profile)h+='<span style="font-size:10px;color:#aaa">Updated '+new Date(profile.updatedAt).toLocaleDateString()+'&nbsp;&bull;&nbsp;'+profile.noteCount+' notes</span>&nbsp;';
+  if(profile)h+='<button class="btn sm ol" style="font-size:10px" onclick="profEnterEdit()">&#9998; Edit</button>&nbsp;';
+  h+='<button class="btn sm ol" style="font-size:10px" onclick="triggerProfileGenerate(false)">&#8635; Re-analyze</button>';
+  if(profile){
+    h+='&nbsp;<button class="btn sm ol" style="font-size:10px;color:#478c6e;border-color:#478c6e" onclick="obsidianPull()" title="Pull from Obsidian vault and merge">&#8592; Obsidian</button>';
+    h+='&nbsp;<button class="btn sm ol" style="font-size:10px;color:#478c6e;border-color:#478c6e" onclick="obsidianPush()" title="Push profile to Obsidian vault">&#8594; Obsidian</button>';
+  }
+  h+='</div>';
+  if(_profileGenerating){h+='<div style="text-align:center;padding:40px;color:#aaa;font-size:13px">✦ Analyzing your notes…</div></div>';return h;}
+  if(!profile){h+='<div style="text-align:center;padding:40px;color:#aaa;font-size:13px">No profile yet. Import some notes and it will generate automatically.</div></div>';return h;}
+  const chip=v=>'<span style="background:#f0eeff;color:#5B4FCF;border-radius:10px;padding:2px 8px;font-size:11px;margin:2px 2px 2px 0;display:inline-block">'+esc(v)+'</span>';
+  const card=(title,content)=>'<div style="margin-bottom:16px"><div style="font-size:10px;font-weight:700;color:#888;letter-spacing:.5px;margin-bottom:6px">'+title+'</div>'+content+'</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">';
+  h+='<div>';
+  if(profile.summary)h+=card('OVERVIEW','<div style="font-size:13px;color:#333;line-height:1.6">'+esc(profile.summary)+'</div>');
+  if(profile.role)h+=card('ROLE','<div style="font-size:12px;color:#555">'+esc(profile.role)+'</div>');
+  if(profile.workThemes?.length)h+=card('WORK THEMES',profile.workThemes.map(chip).join(''));
+  if(profile.activeProjects?.length)h+=card('ACTIVE PROJECTS',profile.activeProjects.map(chip).join(''));
+  if(profile.interests?.length)h+=card('INTERESTS',profile.interests.map(chip).join(''));
+  h+='</div>';
+  h+='<div>';
+  if(profile.skills?.length)h+=card('SKILLS',profile.skills.map(chip).join(''));
+  if(profile.knowledge?.length)h+=card('KNOWLEDGE DOMAINS',profile.knowledge.map(chip).join(''));
+  if(profile.relationships?.length)h+=card('RELATIONSHIPS','<div style="display:flex;flex-direction:column;gap:6px">'+profile.relationships.map(r=>'<div style="font-size:11px"><span style="font-weight:700">'+esc(r.name)+'</span> — <span style="color:#666">'+esc(r.context)+'</span></div>').join('')+'</div>');
+  if(profile.insights?.length)h+=card('INSIGHTS','<ul style="margin:0;padding-left:16px">'+profile.insights.map(i=>'<li style="font-size:12px;color:#555;margin-bottom:4px;line-height:1.5">'+esc(i)+'</li>').join('')+'</ul>');
+  h+='</div>';
+  h+='</div>';
+  if(profile.tags?.length)h+='<div style="margin-top:8px;border-top:1px solid #f0f0f0;padding-top:12px">'+profile.tags.map(chip).join('')+'</div>';
+  // Memory Notes section
+  h+='<div style="margin-top:20px;border-top:2px solid #f0eeff;padding-top:16px">';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+  h+='<div style="font-size:10px;font-weight:700;color:#888;letter-spacing:.5px">MEMORY NOTES</div>';
+  h+='<div style="font-size:10px;color:#bbb;flex:1">Claude reads this before every AI request — keep it current for context.</div>';
+  h+='<button class="btn sm ol" id="mem-refresh-btn" onclick="refreshMemory()" style="font-size:10px;color:var(--blue);border-color:var(--blue)">&#10227; Refresh with Claude</button>';
+  h+='<button class="btn sm" onclick="saveProfileMemory()" style="font-size:10px;background:var(--blue)">Save</button>';
+  h+='</div>';
+  h+='<textarea id="mem-content" rows="10" style="width:100%;font-size:12px;border:1px solid #ddd;border-radius:6px;padding:10px;resize:vertical;font-family:Arial,sans-serif;box-sizing:border-box;color:#444" placeholder="No memory yet. Click ↻ Refresh with Claude to auto-generate from your current projects and journal.">'+esc(profile.memory||memoryContent||'')+'</textarea>';
+  h+='</div>';
+  h+='</div>';
+  return h;
+}
+function rProfileEdit(){
+  const pe=window._profEdit||{};
+  const PURPLE='#5B4FCF';
+  const inp=(id,val,ph,style)=>'<input id="'+id+'" value="'+esc(val||'')+'" placeholder="'+(ph||'')+'" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd;'+(style||'')+'">';
+  const card=(title,content)=>'<div style="margin-bottom:16px"><div style="font-size:10px;font-weight:700;color:#888;letter-spacing:.5px;margin-bottom:6px">'+title+'</div>'+content+'</div>';
+  const chipEdit=field=>{
+    const arr=pe[field]||[];
+    let s='<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">';
+    arr.forEach((v,i)=>{s+='<span style="background:#f0eeff;color:'+PURPLE+';border-radius:10px;padding:2px 8px;font-size:11px;display:inline-flex;align-items:center;gap:3px">'+esc(v)+'<button onclick="profFlushDom();profRmChip(\''+field+'\','+i+')" style="border:none;background:none;cursor:pointer;font-size:12px;color:#b0a0e0;padding:0;line-height:1">×</button></span>';});
+    s+='<input id="pe-'+field+'" placeholder="+ add" style="border:1px solid #e0e0e0;border-radius:10px;padding:2px 10px;font-size:11px;width:90px;outline:none;color:'+PURPLE+'" onkeydown="if(event.key===\'Enter\'){event.preventDefault();profFlushDom();profAddChip(\''+field+'\')}"></div>';
+    return s;
+  };
+  let h='<div class="card" style="border-top:4px solid '+PURPLE+'">';
+  h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">';
+  h+='<div style="font-family:var(--fh);font-size:18px;font-weight:700;color:'+PURPLE+'">Knowledge Profile</div>';
+  h+='<div style="flex:1"></div>';
+  h+='<button class="btn sm ol" style="font-size:10px;color:#999;border-color:#ccc" onclick="profCancelEdit()">Cancel</button>&nbsp;';
+  h+='<button class="btn sm" style="background:'+PURPLE+'" onclick="profSave()">Save Changes</button>';
+  h+='</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">';
+  // Left col
+  h+='<div>';
+  h+=card('OVERVIEW','<textarea id="pe-summary" rows="4" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd;resize:vertical;line-height:1.5">'+esc(pe.summary||'')+'</textarea>');
+  h+=card('ROLE',inp('pe-role',pe.role,'e.g. Sr. Engineer, Product Team'));
+  h+=card('WORK THEMES',chipEdit('workThemes'));
+  h+=card('ACTIVE PROJECTS',chipEdit('activeProjects'));
+  h+=card('INTERESTS',chipEdit('interests'));
+  h+='</div>';
+  // Right col
+  h+='<div>';
+  h+=card('SKILLS',chipEdit('skills'));
+  h+=card('KNOWLEDGE DOMAINS',chipEdit('knowledge'));
+  // Relationships
+  const rels=pe.relationships||[];
+  let rh='<div style="display:flex;flex-direction:column;gap:6px">';
+  rels.forEach((r,i)=>{rh+='<div style="display:flex;gap:6px;align-items:center"><input value="'+esc(r.name)+'" placeholder="Name" onchange="profEditRel('+i+',\'name\',this.value)" style="width:110px;font-size:11px;padding:3px 7px;border-radius:4px;border:1px solid #ddd"><input value="'+esc(r.context)+'" placeholder="Context / role" onchange="profEditRel('+i+',\'context\',this.value)" style="flex:1;font-size:11px;padding:3px 7px;border-radius:4px;border:1px solid #ddd"><button onclick="profFlushDom();profRmRel('+i+')" style="border:none;background:none;cursor:pointer;font-size:16px;color:#ddd">×</button></div>';});
+  rh+='<button class="btn sm ol" style="font-size:10px;width:fit-content;margin-top:2px" onclick="profFlushDom();profAddRel()">+ Add person</button></div>';
+  h+=card('RELATIONSHIPS',rh);
+  // Insights
+  const ins=pe.insights||[];
+  let ih='<div style="display:flex;flex-direction:column;gap:6px">';
+  ins.forEach((insight,i)=>{ih+='<div style="display:flex;gap:6px;align-items:flex-start"><textarea rows="2" onchange="profEditInsight('+i+',this.value)" style="flex:1;font-size:11px;padding:4px 6px;border-radius:4px;border:1px solid #ddd;resize:vertical;line-height:1.4">'+esc(insight)+'</textarea><button onclick="profFlushDom();profRmInsight('+i+')" style="border:none;background:none;cursor:pointer;font-size:16px;color:#ddd;flex-shrink:0">×</button></div>';});
+  ih+='<button class="btn sm ol" style="font-size:10px;width:fit-content;margin-top:2px" onclick="profFlushDom();profAddInsight()">+ Add insight</button></div>';
+  h+=card('INSIGHTS',ih);
+  h+='</div>';
+  h+='</div>';
+  // Tags
+  h+='<div style="margin-top:8px;border-top:1px solid #f0f0f0;padding-top:12px">';
+  h+='<div style="font-size:10px;font-weight:700;color:#888;letter-spacing:.5px;margin-bottom:6px">TAGS</div>';
+  h+=chipEdit('tags');
+  h+='</div>';
+  // Memory Notes
+  h+='<div style="margin-top:20px;border-top:2px solid #f0eeff;padding-top:16px">';
+  h+='<div style="font-size:10px;font-weight:700;color:#888;letter-spacing:.5px;margin-bottom:6px">MEMORY NOTES</div>';
+  h+='<textarea id="pe-memory" rows="10" style="width:100%;box-sizing:border-box;font-size:12px;padding:8px 10px;border-radius:4px;border:1px solid #ddd;resize:vertical;line-height:1.6;font-family:Arial,sans-serif">'+esc(pe.memory||'')+'</textarea>';
+  h+='</div>';
+  h+='</div>';
+  return h;
+}
+window.profFlushDom=function(){
+  if(!window._profEdit)return;
+  const s=document.getElementById('pe-summary');if(s)window._profEdit.summary=s.value;
+  const ro=document.getElementById('pe-role');if(ro)window._profEdit.role=ro.value;
+  const mem=document.getElementById('pe-memory');if(mem)window._profEdit.memory=mem.value;
+};
+window.profEnterEdit=function(){profileEditMode=true;window._profEdit=JSON.parse(JSON.stringify(profile));render();};
+window.profCancelEdit=function(){profileEditMode=false;window._profEdit=null;render();};
+window.profSave=async function(){
+  profFlushDom();
+  const r=await api('/api/profile',{method:'PATCH',body:JSON.stringify(window._profEdit)});
+  if(r.ok){profile=r.profile;memoryContent=profile.memory||'';profileEditMode=false;window._profEdit=null;render();toast('Profile saved');}
+};
+window.profRmChip=function(field,idx){if(!window._profEdit[field])return;window._profEdit[field].splice(idx,1);render();};
+window.profAddChip=function(field){
+  const inp=document.getElementById('pe-'+field);if(!inp)return;
+  const val=inp.value.trim();if(!val)return;
+  if(!window._profEdit[field])window._profEdit[field]=[];
+  window._profEdit[field].push(val);render();
+};
+window.profEditRel=function(idx,key,val){if(window._profEdit.relationships)window._profEdit.relationships[idx][key]=val;};
+window.profRmRel=function(idx){window._profEdit.relationships.splice(idx,1);render();};
+window.profAddRel=function(){if(!window._profEdit.relationships)window._profEdit.relationships=[];window._profEdit.relationships.push({name:'',context:''});render();};
+window.profEditInsight=function(idx,val){if(window._profEdit.insights)window._profEdit.insights[idx]=val;};
+window.profRmInsight=function(idx){window._profEdit.insights.splice(idx,1);render();};
+window.profAddInsight=function(){if(!window._profEdit.insights)window._profEdit.insights=[];window._profEdit.insights.push('');render();};
+
+window.saveProfileMemory=async function(){
+  const ta=document.getElementById('mem-content');
+  const content=ta?ta.value:(profile?.memory||'');
+  const r=await api('/api/profile',{method:'PATCH',body:JSON.stringify({memory:content})});
+  if(r.ok){if(profile)profile.memory=content;memoryContent=content;toast('Memory saved');}else toast('Save failed');
+};
+
+window.obsidianPush=async function(){
+  toast('Pushing to Obsidian vault…');
+  const r=await api('/api/obsidian/push',{method:'POST',body:JSON.stringify({})});
+  if(r.ok)toast('Pushed to '+r.path.split(/[/\\]/).slice(-3).join('/'));
+  else toast('Push failed: '+(r.error||'error'));
+};
+
+window.obsidianPull=async function(){
+  if(!confirm('Pull from Obsidian vault? This will add any new data found in vault files to your profile. Existing data is never removed.'))return;
+  toast('Pulling from Obsidian vault…');
+  const r=await api('/api/obsidian/pull',{method:'POST',body:JSON.stringify({})});
+  if(!r.ok){toast('Pull failed: '+(r.error||'error'));return;}
+  if(!r.merged){toast(r.message||'No vault content found');return;}
+  const pr=await api('/api/profile',{method:'PATCH',body:JSON.stringify(r.merged)});
+  if(pr.ok){
+    profile=pr.profile;memoryContent=profile.memory||'';render();
+    const s=r.additionSummary||{};
+    const added=Object.entries(s).filter(([,n])=>n>0).map(([k,n])=>n+' '+k).join(', ');
+    toast('Synced from Obsidian'+(added?' — added: '+added:'  (no new items found)'));
+  }else toast('Save failed: '+(pr.error||'error'));
+};
 function rNoteImport(){
   let h='<div style="padding:16px">';
   h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">';
@@ -1586,6 +2097,7 @@ function rNoteImport(){
   h+='<div><div style="font-weight:600;margin-bottom:3px">Individual Sections</div>File → Export → Section → <strong>Word (.docx)</strong> → Upload here.<br>Or paste content directly below.</div>';
   h+='</div></div>';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
+  // Drop zone column
   h+='<div>';
   h+='<div style="font-size:10px;color:#888;font-weight:600;margin-bottom:6px">FILES</div>';
   h+='<div class="imp-dropzone" id="imp-drop" onclick="document.getElementById(\'imp-file-inp\').click()" ondragover="event.preventDefault();this.classList.add(\'drag\')" ondragleave="this.classList.remove(\'drag\')" ondrop="event.preventDefault();this.classList.remove(\'drag\');impAddFiles(event.dataTransfer.files)">';
@@ -1597,6 +2109,7 @@ function rNoteImport(){
   h+='<input type="file" id="imp-file-inp" accept=".txt,.docx,.zip,.mht,.mhtml" multiple style="display:none" onchange="impAddFiles(this.files)">';
   h+='<div id="imp-file-list"></div>';
   h+='</div>';
+  // Paste column
   h+='<div>';
   h+='<div style="font-size:10px;color:#888;font-weight:600;margin-bottom:6px">OR PASTE TEXT</div>';
   h+='<textarea id="imp-paste" placeholder="Paste notes here…" style="width:100%;box-sizing:border-box;height:148px;font-size:12px;padding:8px 10px;border-radius:6px;border:1px solid #ddd;resize:none;line-height:1.5"></textarea>';
@@ -1608,31 +2121,48 @@ function rNoteImport(){
   return h;
 }
 function rNotes(){
-  const allNbs=[...new Set(notes.map(n=>n.notebook).filter(Boolean))].sort();
+  const allNbsRaw=[...new Set(notes.map(n=>n.notebook).filter(Boolean))];
   const secsByNb={};notes.forEach(n=>{if(n.notebook&&n.section){if(!secsByNb[n.notebook])secsByNb[n.notebook]=[];if(!secsByNb[n.notebook].includes(n.section))secsByNb[n.notebook].push(n.section);}});
+  allNbsRaw.forEach(n=>{if(!noteNbOrder.includes(n))noteNbOrder.push(n);});
+  const allNbs=noteNbOrder.filter(n=>allNbsRaw.includes(n));
+  Object.keys(secsByNb).forEach(nb=>{if(!noteSecOrder[nb])noteSecOrder[nb]=[];secsByNb[nb].forEach(s=>{if(!noteSecOrder[nb].includes(s))noteSecOrder[nb].push(s);});});
+
   let h='<div class="card" style="border-top:4px solid #5B4FCF;padding:0"><div class="card-b" style="padding:0">';
   h+='<div class="notes-layout">';
+
+  // Sidebar
   h+='<div class="notes-sidebar">';
   h+='<div class="nb-row'+((!nFilter.nb&&!nFilter.sec)?" on":"")+'" onclick="setNoteFilter(null,null)" style="'+((!nFilter.nb&&!nFilter.sec)?"color:var(--blue)":"color:#333")+'">&#128196; All Notes <span style="margin-left:auto;font-size:10px;color:#999;font-weight:400">'+notes.length+'</span></div>';
   allNbs.forEach(nb=>{
     const nbCount=notes.filter(n=>n.notebook===nb).length;
     const open=noteNbOpen[nb];
-    h+='<div class="nb-row'+(nFilter.nb===nb&&!nFilter.sec?" on":"")+'" onclick="event.stopPropagation();togNoteNb(\''+nb.replace(/'/g,"\\'")+'\')" style="'+(nFilter.nb===nb?"color:var(--blue)":"color:#333")+'">'+(open?"&#9660;":"&#9658;")+' '+esc(nb)+' <span style="margin-left:auto;font-size:10px;color:#999;font-weight:400">'+nbCount+'</span></div>';
+    const nbE=nb.replace(/'/g,"\\'");
+    h+='<div class="nb-row'+(nFilter.nb===nb&&!nFilter.sec?" on":"")+'" onclick="event.stopPropagation();togNoteNb(\''+nbE+'\')">'+(open?"▾":"▸")+' <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(nb)+'</span><span style="display:flex;align-items:center;gap:2px;flex-shrink:0"><span style="font-size:10px;color:#999;font-weight:400">'+nbCount+'</span><button onclick="event.stopPropagation();moveNb(\''+nbE+'\', -1)" title="Move up" class="ord-btn">▲</button><button onclick="event.stopPropagation();moveNb(\''+nbE+'\', 1)" title="Move down" class="ord-btn">▼</button></span></div>';
     if(open){
-      (secsByNb[nb]||[]).sort().forEach(sec=>{
+      const ordSecs=(noteSecOrder[nb]||[]).filter(s=>secsByNb[nb]?.includes(s));
+      ordSecs.forEach(sec=>{
         const secCount=notes.filter(n=>n.notebook===nb&&n.section===sec).length;
-        h+='<div class="sec-row'+(nFilter.nb===nb&&nFilter.sec===sec?" on":"")+'" onclick="setNoteFilter(\''+nb.replace(/'/g,"\\'")+'\',\''+sec.replace(/'/g,"\\'")+'\')">'+esc(sec)+' <span style="margin-left:auto;font-size:10px;color:#999">'+secCount+'</span></div>';
+        const secE=sec.replace(/'/g,"\\'");
+        h+='<div class="sec-row'+(nFilter.nb===nb&&nFilter.sec===sec?" on":"")+'" onclick="event.stopPropagation();setNoteFilter(\''+nbE+'\',\''+secE+'\')"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(sec)+'</span><span style="display:flex;align-items:center;gap:2px;flex-shrink:0"><span style="font-size:10px;color:#999">'+secCount+'</span><button onclick="event.stopPropagation();moveSec(\''+nbE+'\',\''+secE+'\', -1)" title="Move up" class="ord-btn">▲</button><button onclick="event.stopPropagation();moveSec(\''+nbE+'\',\''+secE+'\', 1)" title="Move down" class="ord-btn">▼</button></span></div>';
       });
     }
   });
   h+='<div style="padding:8px 12px;margin-top:8px;display:flex;flex-direction:column;gap:6px">';
   h+='<button class="btn sm ol" style="font-size:10px;width:100%" onclick="openNoteModal(null)">+ New Note</button>';
   h+='<button class="btn sm ol" style="font-size:10px;width:100%;color:var(--blue);border-color:var(--blue)" onclick="window._impFiles=[];noteView=\'import\';render()">&#11019; Import Notes</button>';
+  h+='<button class="btn sm ol" style="font-size:10px;width:100%;color:#5B4FCF;border-color:#5B4FCF" onclick="scanState=\'idle\';noteView=\'scan\';render()">&#10022; Scan with Claude</button>';
+  h+='<button class="btn sm ol" style="font-size:10px;width:100%;color:var(--green);border-color:var(--green)" onclick="noteExportMode=!noteExportMode;noteExportSel=new Set();render()">&#8659; Export .docx</button>';
   h+='</div>';
   h+='</div>';
-  h+='<div style="min-width:0">';
-  if(noteView==="import"){
+
+  // Main area
+  h+='<div class="notes-main">';
+  if(noteEditId!==null){
+    h+=rNoteEditor();
+  } else if(noteView==="import"){
     h+=rNoteImport();
+  } else if(noteView==="scan"){
+    h+=rNotesScan();
   } else {
     const ns=noteSearch.toLowerCase();
     let visible=notes.filter(n=>{
@@ -1641,14 +2171,25 @@ function rNotes(){
       if(ns&&!(n.title.toLowerCase().includes(ns)||n.content.toLowerCase().includes(ns)))return false;
       return true;
     }).sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0));
+    window._visibleNoteIds=visible.map(n=>n.id);
     h+='<div style="padding:14px 16px">';
     h+='<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">';
-    h+='<div style="font-family:var(--fh);font-size:15px;font-weight:700;color:#5B4FCF">Notes</div>';
-    if(nFilter.nb){h+='<span style="font-size:11px;color:#666">'+esc(nFilter.nb)+(nFilter.sec?' › '+esc(nFilter.sec):"")+'</span>';}
-    h+='<div style="flex:1"></div>';
-    h+='<input placeholder="Search notes…" value="'+esc(noteSearch)+'" oninput="noteSearch=this.value;render()" style="font-size:11px;padding:5px 10px;border-radius:14px;border:1px solid #ddd;width:160px">';
-    h+='<button class="btn sm ol" style="font-size:10px" onclick="window._impFiles=[];noteView=\'import\';render()">&#11019; Import</button>';
-    h+='<button class="btn sm" style="background:#5B4FCF;font-size:10px" onclick="openNoteModal(null)">+ New Note</button>';
+    if(noteExportMode){
+      h+='<div style="font-family:var(--fh);font-size:15px;font-weight:700;color:var(--green)">&#8659; Select Notes to Export</div>';
+      h+='<div style="flex:1"></div>';
+      const selN=noteExportSel.size;
+      h+='<span style="font-size:11px;color:#888">'+selN+' selected</span>';
+      h+='<button class="btn sm ol" style="font-size:10px" onclick="noteExportSel=new Set(window._visibleNoteIds);render()">Select All</button>';
+      h+='<button class="btn sm ol" style="font-size:10px;color:#999;border-color:#ddd" onclick="noteExportMode=false;noteExportSel=new Set();render()">Cancel</button>';
+      h+='<button class="btn sm" style="background:var(--green);font-size:10px" '+(selN===0?'disabled':'')+' onclick="downloadNotesDocx()">&#8659; Download '+selN+' Note'+(selN!==1?'s':'')+' as .docx</button>';
+    }else{
+      h+='<div style="font-family:var(--fh);font-size:15px;font-weight:700;color:#5B4FCF">Notes</div>';
+      if(nFilter.nb){h+='<span style="font-size:11px;color:#666">'+esc(nFilter.nb)+(nFilter.sec?' › '+esc(nFilter.sec):"")+'</span>';}
+      h+='<div style="flex:1"></div>';
+      h+='<input id="note-srch" placeholder="Search notes…" value="'+esc(noteSearch)+'" oninput="setNoteSearch(this.value,this.selectionStart)" style="font-size:11px;padding:5px 10px;border-radius:14px;border:1px solid #ddd;width:160px">';
+      h+='<button class="btn sm ol" style="font-size:10px" onclick="window._impFiles=[];noteView=\'import\';render()">&#11019; Import</button>';
+      h+='<button class="btn sm" style="background:#5B4FCF;font-size:10px" onclick="openNoteModal(null)">+ New Note</button>';
+    }
     h+='</div>';
     if(!visible.length){
       h+='<div style="text-align:center;padding:40px 20px;color:#bbb;font-size:13px">No notes yet. Click + New Note to get started.</div>';
@@ -1660,21 +2201,33 @@ function rNotes(){
         const preview=rawContent.replace(/<[^>]+>/g," ").replace(/\s{2,}/g," ").slice(0,120).replace(/\n/g," ");
         const gNames=(n.goalRefs||[]).map(ref=>{const{year,id}=parseGoalRef(ref);const g=(goals[year]?.goals||[]).find(gg=>gg.id===id);return g?(g.text||"").slice(0,30):null;}).filter(Boolean);
         const pNames=(n.projectRefs||[]).map(pid=>{const p=state.projects.find(p=>p.id===pid);return p?p.shortName:null;}).filter(Boolean);
-        h+='<div class="note-card'+(n.pinned?" pinned":"")+'" onclick="openNoteModal(\''+n.id+'\')">';
+        const isSelExp=noteExportMode&&noteExportSel.has(n.id);
+        const cardClick=noteExportMode
+          ?'noteExportSel.has(\''+n.id+'\')?noteExportSel.delete(\''+n.id+'\'):noteExportSel.add(\''+n.id+'\');render()'
+          :'openNoteModal(\''+n.id+'\')';
+        h+='<div class="note-card'+(n.pinned?" pinned":""+(isSelExp?" selected-exp":""))+'" onclick="'+cardClick+'" style="'+(isSelExp?'outline:2px solid var(--green);background:#f0faf4':'')+'position:relative">';
+        if(noteExportMode){
+          h+='<div style="position:absolute;top:8px;right:8px;z-index:2"><input type="checkbox" '+(isSelExp?'checked':'')+' onclick="event.stopPropagation();noteExportSel.has(\''+n.id+'\')?noteExportSel.delete(\''+n.id+'\'):noteExportSel.add(\''+n.id+'\');render()" style="width:15px;height:15px;accent-color:var(--green)"></div>';
+        }
         h+='<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:4px">';
         if(n.pinned)h+='<span style="color:var(--gold);font-size:12px">&#128204;</span>';
-        h+='<span style="font-size:13px;font-weight:700;font-family:var(--fh);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(n.title)+'</span>';
-        if(n.richContent)h+='<span title="Rich content (images/links)" style="font-size:10px;color:#aaa;flex-shrink:0">&#128444;</span>';
-        h+='<button onclick="event.stopPropagation();rmNote(\''+n.id+'\')" style="background:none;border:none;cursor:pointer;color:#ccc;font-size:14px;padding:0;line-height:1" title="Delete">×</button>';
+        h+='<span style="font-size:13px;font-weight:700;font-family:var(--fh);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(noteExportMode?'padding-right:20px':'')+'">'+esc(n.title)+'</span>';
+        if(!noteExportMode){
+          if(n.richContent)h+='<span title="Rich content (images/links)" style="font-size:10px;color:#aaa;flex-shrink:0">&#128444;</span>';
+          h+='<button onclick="event.stopPropagation();rmNote(\''+n.id+'\')" style="background:none;border:none;cursor:pointer;color:#999;font-size:14px;padding:0;line-height:1" title="Delete">×</button>';
+        }
         h+='</div>';
         h+='<div style="font-size:10px;color:#aaa;margin-bottom:6px">'+esc(nb)+' › '+esc(sec)+'&nbsp;&nbsp;&nbsp;'+esc(n.updated||n.created||"")+'</div>';
         if(preview)h+='<div style="font-size:11px;color:#666;line-height:1.5;margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+esc(preview)+'</div>';
         if(gNames.length||pNames.length){h+='<div style="font-size:10px;color:#888;margin-bottom:6px">';gNames.forEach(g=>{h+='<span style="margin-right:6px">&#9679; '+esc(g)+'</span>';});pNames.forEach(p=>{h+='<span style="margin-right:6px">&#9671; '+esc(p)+'</span>';});h+='</div>';}
-        h+='<div style="display:flex;gap:5px;justify-content:flex-end;margin-top:4px">';
-        h+='<button onclick="event.stopPropagation();addNoteToMemory(\''+n.id+'\')" class="btn sm ol" style="font-size:9px;color:var(--green);border-color:var(--green);padding:2px 6px">+ Memory</button>';
-        h+='<button onclick="event.stopPropagation();scanNote(\''+n.id+'\')" class="btn sm ol" style="font-size:9px;color:#5B4FCF;border-color:#5B4FCF;padding:2px 6px">&#10022; Scan</button>';
-        h+='<button onclick="event.stopPropagation();openNoteModal(\''+n.id+'\')" class="btn sm ol" style="font-size:9px;padding:2px 6px">Edit</button>';
-        h+='</div></div>';
+        if(!noteExportMode){
+          h+='<div style="display:flex;gap:5px;justify-content:flex-end;margin-top:4px">';
+          h+='<button onclick="event.stopPropagation();addNoteToMemory(\''+n.id+'\')" class="btn sm ol" style="font-size:9px;color:var(--green);border-color:var(--green);padding:2px 6px">+ Memory</button>';
+          h+='<button onclick="event.stopPropagation();scanNote(\''+n.id+'\')" class="btn sm ol" style="font-size:9px;color:#5B4FCF;border-color:#5B4FCF;padding:2px 6px">&#10022; Scan</button>';
+          h+='<button onclick="event.stopPropagation();openNoteModal(\''+n.id+'\')" class="btn sm ol" style="font-size:9px;padding:2px 6px">Edit</button>';
+          h+='</div>';
+        }
+        h+='</div>';
       });
       h+='</div>';
     }
@@ -1684,6 +2237,7 @@ function rNotes(){
   h+='</div></div></div>';
   return h;
 }
+
 window.aiDraft=async()=>{
   const ap=state.projects.filter(p=>!p.archived);
   const out=document.getElementById("re-out");
