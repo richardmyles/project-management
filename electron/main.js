@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, Tray, nativeImage } = require("electron");
+const { app, BrowserWindow, Menu, shell, Tray, nativeImage, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
@@ -6,6 +6,44 @@ const http = require("http");
 const PORT = 3201;
 let mainWindow;
 let tray;
+
+function setupAutoUpdater() {
+  // Only run in packaged app, not during development
+  if (!app.isPackaged) return;
+  try {
+    const { autoUpdater } = require("electron-updater");
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on("update-available", () => {
+      // Download happens automatically; user is notified when ready to install
+    });
+
+    autoUpdater.on("update-downloaded", () => {
+      const result = dialog.showMessageBoxSync(mainWindow, {
+        type: "info",
+        title: "Update Ready",
+        message: "A new version of My Projects has been downloaded.",
+        detail: "Restart the app to apply the update.",
+        buttons: ["Restart Now", "Later"],
+        defaultId: 0,
+      });
+      if (result === 0) {
+        app.isQuitting = true;
+        autoUpdater.quitAndInstall();
+      }
+    });
+
+    autoUpdater.on("error", err => {
+      console.error("[updater] error:", err.message);
+    });
+
+    // Check for updates shortly after launch
+    setTimeout(() => autoUpdater.checkForUpdates(), 5000);
+  } catch (e) {
+    console.error("[updater] electron-updater not available:", e.message);
+  }
+}
 
 function ensureData(dataRoot) {
   [
@@ -127,6 +165,7 @@ if (!gotLock) {
 
     createTray();
     createWindow();
+    setupAutoUpdater();
 
     setImmediate(() => {
       require(path.join(__dirname, "..", "server.js"));
