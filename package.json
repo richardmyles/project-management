@@ -16,6 +16,7 @@
     "adm-zip": "^0.5.16",
     "cheerio": "^1.2.0",
     "docx": "^9.6.1",
+    "electron-updater": "^6.3.9",
     "express": "^4.21.0",
     "mammoth": "^1.8.0",
     "multer": "^1.4.5-lts.1",
@@ -28,6 +29,13 @@
   "build": {
     "appId": "com.myprojects.app",
     "productName": "My Projects",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "richardmyles",
+        "repo": "project-management"
+      }
+    ],
     "directories": {
       "output": "dist"
     },
