@@ -1,0 +1,11 @@
+node_modules/
+.env
+data/
+uploads/
+dist/
+build/
+release/
+config.json
+*.lnk
+*.vbs
+*.ps1

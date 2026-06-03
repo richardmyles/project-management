@@ -1,0 +1,182 @@
+const { app, BrowserWindow, Menu, shell, Tray, nativeImage, dialog } = require("electron");
+const path = require("path");
+const fs = require("fs");
+const http = require("http");
+
+const PORT = process.env.PORT || 3200;
+let mainWindow;
+let tray;
+
+function setupAutoUpdater() {
+  // Only run in packaged app, not during development
+  if (!app.isPackaged) return;
+  try {
+    const { autoUpdater } = require("electron-updater");
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on("update-available", () => {
+      // Download happens automatically; user is notified when ready to install
+    });
+
+    autoUpdater.on("update-downloaded", () => {
+      const result = dialog.showMessageBoxSync(mainWindow, {
+        type: "info",
+        title: "Update Ready",
+        message: "A new version of My Projects has been downloaded.",
+        detail: "Restart the app to apply the update.",
+        buttons: ["Restart Now", "Later"],
+        defaultId: 0,
+      });
+      if (result === 0) {
+        app.isQuitting = true;
+        autoUpdater.quitAndInstall();
+      }
+    });
+
+    autoUpdater.on("error", err => {
+      console.error("[updater] error:", err.message);
+    });
+
+    // Check for updates shortly after launch
+    setTimeout(() => autoUpdater.checkForUpdates(), 5000);
+  } catch (e) {
+    console.error("[updater] electron-updater not available:", e.message);
+  }
+}
+
+function ensureData(dataRoot) {
+  [
+    path.join(dataRoot, "data"),
+    path.join(dataRoot, "data", "goals"),
+    path.join(dataRoot, "data", "archive"),
+    path.join(dataRoot, "data", "reports"),
+  ].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
+
+  const defaults = {
+    [path.join(dataRoot, "config.json")]:
+      { name: "", team: "", org: "", primaryColor: "#0F3A85", setupComplete: false },
+    [path.join(dataRoot, "data", "state.json")]:
+      { lastUpdated: null, projects: [], journal: [], tasks: [] },
+    [path.join(dataRoot, "data", "goals", "goal_project_map.json")]:
+      { lastUpdated: null, mappings: [] },
+    [path.join(dataRoot, "data", "notes.json")]:
+      { notes: [] },
+  };
+  Object.entries(defaults).forEach(([fp, val]) => {
+    if (!fs.existsSync(fp)) fs.writeFileSync(fp, JSON.stringify(val, null, 2));
+  });
+}
+
+function waitForServer(cb, tries = 40) {
+  http.get(`http://localhost:${PORT}`, () => cb()).on("error", () => {
+    if (tries > 0) setTimeout(() => waitForServer(cb, tries - 1), 100);
+    else cb();
+  });
+}
+
+function showWindow() {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.setAlwaysOnTop(true);
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.setAlwaysOnTop(false);
+}
+
+function createTray() {
+  const iconPath = path.join(
+    __dirname, "..", "node_modules", "app-builder-lib",
+    "templates", "icons", "electron-linux", "32x32.png"
+  );
+  const icon = fs.existsSync(iconPath)
+    ? nativeImage.createFromPath(iconPath)
+    : nativeImage.createEmpty();
+  tray = new Tray(icon);
+  tray.setToolTip("Richard's Projects");
+  tray.on("click", showWindow);
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Open My Projects", click: showWindow },
+    { type: "separator" },
+    { label: "Quit", click: () => { app.isQuitting = true; app.quit(); } },
+  ]));
+}
+
+function createWindow() {
+  Menu.setApplicationMenu(null);
+
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 860,
+    minWidth: 820,
+    minHeight: 600,
+    title: "Richard's Projects",
+    backgroundColor: "#f5f0ef",
+    icon: path.join(__dirname, "..", "node_modules", "app-builder-lib", "templates", "icons", "electron-linux", "256x256.png"),
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      zoomFactor: 1.12,
+    },
+    show: true,
+  });
+
+  mainWindow.loadFile(path.join(__dirname, "loading.html"));
+
+  waitForServer(() => { if (mainWindow) mainWindow.loadURL(`http://localhost:${PORT}`); });
+
+  // Hide to tray instead of quitting when window is closed
+  mainWindow.on("close", e => {
+    if (!app.isQuitting) {
+      e.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
+  mainWindow.on("closed", () => { mainWindow = null; });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: "deny" };
+  });
+}
+
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.exit(0);
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      // setAlwaysOnTop trick bypasses Windows focus-stealing prevention
+      mainWindow.setAlwaysOnTop(true);
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindow.setAlwaysOnTop(false);
+    }
+  });
+
+  app.whenReady().then(() => {
+    // In dev (npm run electron), use the project directory so data/ is the live folder.
+    // In packaged builds, use userData so data survives app updates.
+    const dataRoot = app.isPackaged
+      ? app.getPath("userData")
+      : path.join(__dirname, "..");
+    ensureData(dataRoot);
+    process.env.APP_DATA_PATH = dataRoot;
+    process.env.ELECTRON_APP = "1";
+
+    createTray();
+    createWindow();
+    setupAutoUpdater();
+
+    setImmediate(() => {
+      require(path.join(__dirname, "..", "server.js"));
+    });
+  });
+
+  // Keep process alive when all windows are closed (tray keeps it running)
+  app.on("window-all-closed", () => {});
+
+  app.on("before-quit", () => { app.isQuitting = true; });
+}
