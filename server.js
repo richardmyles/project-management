@@ -1,4 +1,3 @@
-require("dotenv").config();
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
@@ -641,11 +640,6 @@ app.post("/api/reports/export-docx", async (req, res) => {
       if (dateTo && dateStr > dateTo) return false;
       return true;
     };
-    // For completed milestones, filter by when they were completed, not their target date.
-    const msInRange = (m) => {
-      if (m.status === "complete") return inRange(m.completedAt || m.target);
-      return inRange(m.target);
-    };
     const rangeLabel = dateFrom || dateTo ? (dateFrom || "start") + " → " + (dateTo || "present") : "all time";
 
     const DARK = "333333", GRAY = "888888", LGRAY = "C0C0C0", RED = "E1251B", BLUE = "0F3A85", GREEN = "144B2D";
@@ -765,9 +759,9 @@ app.post("/api/reports/export-docx", async (req, res) => {
                 new TextRun({ text: p.shortName + ": " + p.name, font: "Arial", size: 18, bold: true, color: DARK }),
                 new TextRun({ text: "  ·  " + getHealth(p) + "  ·  " + comp + "/" + p.milestones.length, font: "Arial", size: 16, color: GRAY }),
               ]}));
-              const inProg = p.milestones.filter(m => m.status === "in-progress" && msInRange(m));
-              const atRsk = p.milestones.filter(m => (m.status === "at-risk" || m.status === "blocked") && msInRange(m));
-              const done = p.milestones.filter(m => m.status === "complete" && msInRange(m)).slice(-3);
+              const inProg = p.milestones.filter(m => m.status === "in-progress" && inRange(m.target));
+              const atRsk = p.milestones.filter(m => (m.status === "at-risk" || m.status === "blocked") && inRange(m.target));
+              const done = p.milestones.filter(m => m.status === "complete" && inRange(m.target)).slice(-3);
               done.forEach(m => c.push(new Paragraph({ spacing: { after: 4 }, indent: { left: 480 }, children: [new TextRun({ text: "✓  " + m.name, font: "Arial", size: 16, color: GRAY })] })));
               inProg.forEach(m => c.push(new Paragraph({ spacing: { after: 4 }, indent: { left: 480 }, children: [new TextRun({ text: "▸  " + m.name + (m.target ? " — " + m.target : ""), font: "Arial", size: 16, color: DARK })] })));
               atRsk.forEach(m => c.push(new Paragraph({ spacing: { after: 4 }, indent: { left: 480 }, children: [new TextRun({ text: "⚠  " + m.name, font: "Arial", size: 16, color: RED })] })));
@@ -784,7 +778,7 @@ app.post("/api/reports/export-docx", async (req, res) => {
         new TextRun({ text: "Project Detail", font: "Times New Roman", size: 22, color: BLUE }),
       ]}));
       for (const p of selected) {
-        const filteredMs = p.milestones.filter(m => msInRange(m));
+        const filteredMs = p.milestones.filter(m => inRange(m.target));
         if (!filteredMs.length) continue;
         c.push(new Paragraph({ spacing: { before: 100, after: 40 }, children: [
           new TextRun({ text: p.shortName + "  ", font: "Arial", size: 18, bold: true, color: BLUE }),
