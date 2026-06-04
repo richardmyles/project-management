@@ -1,88 +1,150 @@
-# Richard's Projects
+# My Projects
 
-Personal project management hub for LP1 TSMS work. Tracks projects, milestones, risks, dependencies, goals, and progress reports.
+A self-contained desktop app for tracking projects, milestones, goals, risks, and progress reports. Data is stored locally as JSON files — no cloud account, no database, no setup beyond a one-time personalisation step.
 
-> **This is a personal, confidential tool.** It lives on OneDrive — not GitHub, not `C:\Dev`. It contains goal check-in notes, project status, and internal strategy details that should not be committed to any repository.
+Built with Electron + Node.js. Available as a Windows installer or portable `.exe`.
 
-## Location
+---
 
+## Download
+
+Go to the [Releases](../../releases/latest) page and download one of:
+
+| File | When to use |
+|------|-------------|
+| `My Projects Setup 1.0.0.exe` | Standard installer — adds to Start Menu and desktop |
+| `MyProjects-portable.exe` | No install needed — run from anywhere, including a USB drive |
+
+---
+
+## Installation
+
+### Installer (recommended)
+
+1. Download `My Projects Setup 1.0.0.exe`
+2. Run it and follow the prompts
+3. Launch **My Projects** from the Start Menu or desktop shortcut
+
+### Portable
+
+1. Download `MyProjects-portable.exe`
+2. Move it wherever you like
+3. Double-click to run — no installation required
+
+> **Note:** Windows may show a SmartScreen warning ("Windows protected your PC") because the app isn't signed with a paid certificate. Click **More info → Run anyway** to proceed.
+
+---
+
+## First Run
+
+On first launch a setup screen appears. Fill in:
+
+- **Your name** — used in report headers
+- **Team** — appears in exported Word documents
+- **Organisation** — appears in exported Word documents
+- **Accent colour** — sets the app's header and highlight colour
+
+Click **Get Started**. Your settings are saved locally in `config.json` and the app opens to the main dashboard.
+
+---
+
+## Auto-Updates
+
+The app checks for updates automatically a few seconds after launch. When a new version is available it downloads in the background. Once ready, a prompt asks whether to **Restart Now** or **Later**. Updates are pulled from this repository's GitHub Releases.
+
+---
+
+## AI Features (optional)
+
+Some features use the Claude API for AI-assisted summaries and suggestions. This is optional — the app works fully without it.
+
+To enable AI features, create a `.env` file next to the app's data folder with one of the following options:
+
+**Option A — Anthropic API key:**
 ```
-C:\Users\L075876\OneDrive - Eli Lilly and Company\Documents\richards-projects\
+ANTHROPIC_API_KEY=your-key-here
 ```
 
-This path is OneDrive-synced. If you switch machines, OneDrive will sync the entire project directory including all data files. Just run `npm install && npm start` on the new machine.
-
-## Quick Start
-
-```powershell
-cd "C:\Users\L075876\OneDrive - Eli Lilly and Company\Documents\richards-projects"
-npm install
-npm start
+**Option B — Corporate API gateway:**
+```
+AI_API_KEY=your-key-here
+AI_BASE_URL=https://your-gateway.example.com
+AI_MODEL=claude-sonnet-4-5
 ```
 
-Open [http://localhost:3200](http://localhost:3200).
-
-## Where Data Lives
-
-Everything is in the `data/` folder as JSON and Markdown files. OneDrive syncs these automatically — no manual backup needed.
-
+**Option C — CLI token command (SSO):**
 ```
-data/
-├── state.json              # Active projects, journal entries
-├── goals/
-│   ├── 2026_goals.json     # Imported annual goals
-│   └── goal_project_map.json   # Which goals map to which projects
-├── archive/
-│   └── {project}_summary.json/.md   # Closed project reports
-└── reports/
-    └── {date}_checkin.md    # Generated progress reports
+AI_TOKEN_CMD=your-cli-tool token
 ```
+
+See `.env.example` in the repository for a full template.
+
+---
 
 ## Features
 
-### Projects
-Create, track, and close projects with milestones, dependencies, risks, and sync items. Each project gets a health indicator (On Track / At Risk / Critical / Complete) based on milestone status.
+**Dashboard** — live summary of all active projects, overdue milestones, and open tasks
 
-### Close & Archive
-When a project is done, "Close & Archive" generates:
-- A JSON snapshot with full project history and statistics
-- A Markdown closure report with milestones, lessons learned, and key decisions
-- Both are saved to `data/archive/` for permanent reference
+**Projects** — create and manage projects with milestones, risks, dependencies, links, and goal references. Each milestone has a status (complete / in-progress / at-risk / blocked / not-started), owner, notes, and sub-bullets.
 
-### Goals Integration
-Load your annual goals and map them to projects. When you generate progress reports, they connect project status back to the goals they support. Goals import is non-destructive — updating goals mid-year preserves all existing status and notes.
+**Tasks** — standalone task list with tags, project links, owners, and completion tracking
 
-Import goals via CLI:
+**Goals** — import annual goals from a Word document (`.docx`). Goals are grouped by category with quarterly notes fields (Q1–Q4) and status badges. Importing is non-destructive: existing notes and statuses are preserved; removed goals are marked discontinued rather than deleted.
+
+**Timeline** — Gantt-style view of milestones across all projects
+
+**Board** — Kanban view of milestones by status
+
+**Journal** — decision log, lessons learned, risk notes, meeting notes, and actions — tagged by project and type
+
+**Reports** — generate progress reports at four detail levels (summary / check-in / full / comprehensive) and export as Word (`.docx`) or markdown
+
+**Archive** — closed project snapshots with auto-generated closure reports
+
+**Undo / Redo** — every save is snapshotted; up to 30 steps back
+
+---
+
+## Running from Source
+
+Requires [Node.js](https://nodejs.org/) 18 or later.
+
 ```bash
-node scripts/import-goals.js my_goals.json
+git clone https://github.com/richardmyles/project-management.git
+cd project-management
+npm install
+npm start          # opens in browser at http://localhost:3201
 ```
 
-Or use Claude Code to parse a goals document into the expected format and call the API.
+To run as a desktop app:
+```bash
+npm run electron
+```
 
-### Progress Reports
-Generate check-in, quarterly, or annual reports. Reports are Markdown and pull from both project status and goal mappings. Saved to `data/reports/` for historical reference.
+To build a Windows installer locally:
+```bash
+npm run dist
+```
 
-### PM Journal
-Log decisions, lessons learned, risks, action items, and meeting notes. Tag entries to specific projects. Journal entries are included in closure reports.
+---
 
-### Sync Checklist
-Track external artifacts (Loop pages, Planner boards, Figma diagrams) so you know what else to update when project status changes.
+## Data Storage
 
-## Claude Code Integration
+All data is stored locally in the app's working directory:
 
-This project includes a `CLAUDE.md` with complete instructions for Claude Code. Point Claude Code at this directory and it can:
+```
+data/
+├── state.json          # Projects, tasks, journal
+├── goals/              # Annual goal files
+├── reports/            # Generated reports (.md and .docx)
+└── archive/            # Closed project snapshots
+config.json             # Your name, team, org, accent colour
+```
 
-- Import and parse goals documents (any format)
-- Update project status and milestones
-- Generate progress reports
-- Help create new projects from goals
-- Drive improvements to the application itself
+No data is sent anywhere unless you explicitly use the AI features, which call the configured API endpoint.
 
-## Architecture
+---
 
-- **server.js** — Express server (port 3200) with REST API
-- **public/index.html** — Single-page UI, no build step
-- **data/** — All persistent state as JSON/Markdown files
-- **scripts/** — CLI utilities
+## License
 
-The server is intentionally minimal (one dependency: Express). The UI is vanilla JS — no React, no build tools, no CDN dependencies. It works on restricted corporate networks.
+MIT

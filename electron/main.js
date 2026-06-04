@@ -3,7 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const http = require("http");
 
-const PORT = process.env.PORT || 3200;
+const PORT = 3201;
 let mainWindow;
 let tray;
 
@@ -85,15 +85,15 @@ function showWindow() {
 }
 
 function createTray() {
-  const iconPath = path.join(
-    __dirname, "..", "node_modules", "app-builder-lib",
-    "templates", "icons", "electron-linux", "32x32.png"
-  );
+  const iconPath = path.join(__dirname, "icon.ico");
+  console.log(`[icon] trying tray icon: ${iconPath}`);
   const icon = fs.existsSync(iconPath)
     ? nativeImage.createFromPath(iconPath)
     : nativeImage.createEmpty();
+  if (icon.isEmpty()) console.warn("[icon] tray icon is empty - check icon.ico");
+  else console.log("[icon] tray icon loaded OK");
   tray = new Tray(icon);
-  tray.setToolTip("Richard's Projects");
+  tray.setToolTip("My Projects");
   tray.on("click", showWindow);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open My Projects", click: showWindow },
@@ -110,9 +110,9 @@ function createWindow() {
     height: 860,
     minWidth: 820,
     minHeight: 600,
-    title: "Richard's Projects",
+    title: "My Projects",
     backgroundColor: "#f5f0ef",
-    icon: path.join(__dirname, "..", "node_modules", "app-builder-lib", "templates", "icons", "electron-linux", "256x256.png"),
+    icon: path.join(__dirname, "icon.ico"),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -157,11 +157,8 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
-    // In dev (npm run electron), use the project directory so data/ is the live folder.
-    // In packaged builds, use userData so data survives app updates.
-    const dataRoot = app.isPackaged
-      ? app.getPath("userData")
-      : path.join(__dirname, "..");
+    // Use userData for distributable — portable exe extracts to a temp dir
+    const dataRoot = app.getPath("userData");
     ensureData(dataRoot);
     process.env.APP_DATA_PATH = dataRoot;
     process.env.ELECTRON_APP = "1";

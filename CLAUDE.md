@@ -1,60 +1,115 @@
-# CLAUDE.md — Richard's Projects
+# CLAUDE.md — My Projects (Shareable Edition)
 
 ## What This Is
 
-This is Richard's central project management hub for LP1 TSMS work. It tracks projects, milestones, risks, dependencies, goals, and progress reports. All data is file-based JSON stored in `data/` and syncs via OneDrive.
+A self-contained, file-based project management tool. Tracks projects, milestones, risks, dependencies, goals, and progress reports. Data persists as JSON files in `data/`. Designed to be shared with colleagues — each user personalizes it on first run via a setup modal.
 
-**Location:** `C:\Users\L075876\OneDrive - Eli Lilly and Company\Documents\richards-projects\`
-
-**CONFIDENTIAL — NOT FOR GITHUB.** This tool contains personal goal notes, project strategy details, and check-in content. It lives exclusively on OneDrive. Do not suggest committing this to any repository or moving it to `C:\Dev`.
+**Location:** *(your local clone path)*
 
 ## Architecture
 
 ```
-richards-projects/
-├── server.js              # Express server (port 3200)
-├── public/index.html      # Single-page UI
-├── data/
-│   ├── state.json         # Active projects, journal, sync items
-│   ├── goals/
-│   │   ├── {year}_goals.json          # Imported goals by year
-│   │   └── goal_project_map.json      # Maps goal IDs → project IDs
-│   ├── archive/
-│   │   └── {id}_{shortname}_{date}.json  # Closed project summaries
-│   └── reports/
-│       └── {date}_{type}.md           # Generated progress reports
-└── scripts/
-    └── import-goals.js    # CLI: node scripts/import-goals.js <file>
+Project Management/
+├── server.js              # Express server (port 3201, auto-opens browser on start)
+├── public/index.html      # Single-page app (628 lines, vanilla JS, innerHTML re-render)
+├── package.json
+├── config.json            # User personalization (name, team, org, primaryColor, setupComplete)
+├── uploads/               # Temp storage for .docx uploads — auto-deleted after parse
+└── data/
+    ├── state.json         # Active projects, journal, tasks
+    ├── .history/          # Undo/redo snapshots (up to 30, numbered JSON files)
+    ├── drafts/            # Report drafts
+    ├── goals/
+    │   ├── {year}_goals.json          # Goals by year
+    │   └── goal_project_map.json      # Maps goal IDs → project IDs
+    ├── archive/
+    │   ├── {id}_{short}_{date}.json   # Closed project snapshots
+    │   └── {id}_{short}_{date}.md     # Closure report (markdown)
+    └── reports/
+        └── {date}_{type}.md/.docx     # Generated progress reports
 ```
 
 ## Running
 
 ```bash
 npm install
-npm start          # http://localhost:3200
+npm start    # http://localhost:3201 — browser opens automatically
 ```
+
+On first run, the browser shows a setup modal. Fill in name, team, org, and accent color, then click "Get Started". This writes `config.json` with `setupComplete: true`.
+
+## Key Behaviors
+
+### First-run setup
+`config.json` ships with `setupComplete: false`. On page load, `GET /api/config` is fetched — if `setupComplete` is false, the setup overlay is shown before any app content renders. After the user fills in their details, `PUT /api/config` is called and the app renders normally.
+
+The `--primary` CSS variable is set from `cfg.primaryColor` at load time, so the header, active tabs, and accents all use the user's chosen color.
+
+### Goals import from .docx
+Upload a Word document via the Goals tab. The server uses `mammoth` to convert it to HTML, then `parseGoalsFromHtml()` extracts:
+- Headings (`<h1>`–`<h6>`) and fully-bold paragraphs → goal categories
+- List items (`<li>`) → individual goals, with nested lists as sub-items
+- Plain paragraphs (length > 8 chars) → goals under the current category
+
+Parsed goals merge non-destructively into `data/goals/{year}_goals.json`. Existing goals keep their status and quarterly notes; new ones are added as `on-track`; goals no longer present are marked `discontinued`, not deleted.
+
+### Auto-categorization suggestions
+When creating a project or task, `suggestGoals()` runs client-side: it splits the input text into words (4+ chars, filtered against a stop-word set), scores each goal by the fraction of words that appear in that goal's text/category/subItems, and surfaces the top matches as clickable chips above `0.05` score. No server call needed — goals are loaded into the global `goals` object at startup.
+
+### Undo/redo
+Every state save (`PUT /api/state`, `PATCH /api/project/:id`, etc.) pushes the previous state to `data/.history/` before writing. Up to 30 snapshots are kept. `POST /api/undo` restores the latest snapshot; `POST /api/redo` reapplies from an in-memory redo stack.
+
+### Closing a project
+`POST /api/project/:id/close` generates a JSON snapshot + markdown closure report in `data/archive/`, then removes the project from active state. Lesson/decision journal entries tagged to that project are pulled into the closure report automatically.
+
+### Report export
+`POST /api/reports/export-docx` uses the `docx` npm package to build a formatted Word document. It reads `config.json` for the header/footer (name, team, org). Report detail levels: `summary`, `checkin`, `full`, `comprehensive`. The generated `.docx` is saved to `data/reports/` and returned as a download URL.
 
 ## API Endpoints
 
-All data operations go through the REST API so the filesystem stays consistent:
-
 | Method | Route | Purpose |
 |--------|-------|---------|
+| GET | /api/config | Read config.json |
+| PUT | /api/config | Write config.json (sets setupComplete: true) |
 | GET | /api/state | Full project state |
 | PUT | /api/state | Save full state |
-| PATCH | /api/project/:id | Update single project |
 | POST | /api/project | Add new project |
+| PATCH | /api/project/:id | Update single project |
 | DELETE | /api/project/:id | Remove project |
-| POST | /api/project/:id/close | Close project → generates summary in archive/ |
-| GET | /api/goals | All loaded goals |
-| POST | /api/goals/import | Import goals from structured text/JSON |
+| POST | /api/project/:id/close | Close project → archive |
+| POST | /api/undo | Restore previous state snapshot |
+| POST | /api/redo | Reapply undone state |
+| GET | /api/history/count | Count of available undo/redo steps |
+| GET | /api/goals | All loaded goals (keyed by year) |
+| POST | /api/goals/import | Import goals from structured JSON |
+| PATCH | /api/goals/:goalId | Update a single goal (status, quarterly notes) |
 | GET | /api/goals/map | Goal → project mapping |
-| PUT | /api/goals/map | Update mapping |
-| POST | /api/reports/generate | Generate progress report |
+| PUT | /api/goals/map | Update goal → project mapping |
+| POST | /api/goals/upload-docx | Parse a .docx file → import goals |
 | GET | /api/reports | List all reports |
-| GET | /api/reports/:filename | Read specific report |
+| POST | /api/reports/generate | Generate markdown progress report |
+| POST | /api/reports/export-docx | Generate Word (.docx) progress report |
+| GET | /api/reports/:filename | Read or download a report |
+| GET | /api/archive | List all archived projects |
+| GET | /api/archive/:filename | Read an archive file (JSON, MD, or DOCX) |
+| POST | /api/archive/:id/export-docx | Export closure report as .docx |
+| GET | /api/tasks | List all tasks |
+| POST | /api/tasks | Add a task |
+| PATCH | /api/tasks/:id | Update a task |
+| DELETE | /api/tasks/:id | Delete a task |
 
 ## Data Contracts
+
+### config.json
+```json
+{
+  "name": "Jane Smith",
+  "team": "Manufacturing Sciences",
+  "org": "Acme Corp",
+  "primaryColor": "#0F3A85",
+  "setupComplete": true
+}
+```
 
 ### state.json
 ```json
@@ -73,6 +128,8 @@ All data operations go through the REST API so the filesystem stays consistent:
       "description": "string",
       "dependencies": ["string"],
       "risks": [{"text": "string", "severity": "high|medium|low"}],
+      "links": [{"label": "string", "url": "string"}],
+      "goalRefs": ["goal IDs"],
       "milestones": [
         {
           "id": "string",
@@ -80,11 +137,11 @@ All data operations go through the REST API so the filesystem stays consistent:
           "target": "YYYY-MM-DD",
           "status": "complete|in-progress|at-risk|blocked|not-started",
           "notes": "string",
-          "goalRef": "optional goal ID this milestone maps to"
+          "owner": "string",
+          "bullets": ["string"],
+          "links": [{"label": "string", "url": "string"}]
         }
-      ],
-      "syncItems": ["string"],
-      "goalRefs": ["goal IDs this project supports"]
+      ]
     }
   ],
   "journal": [
@@ -95,6 +152,21 @@ All data operations go through the REST API so the filesystem stays consistent:
       "project": "project ID or 'all'",
       "type": "decision|lesson|risk|action|note|meeting"
     }
+  ],
+  "tasks": [
+    {
+      "id": "string",
+      "text": "string",
+      "status": "open|done",
+      "created": "YYYY-MM-DD",
+      "completed": "YYYY-MM-DD or null",
+      "notes": "string",
+      "tags": ["string"],
+      "project": "project ID or null",
+      "owner": "string",
+      "bullets": ["string"],
+      "links": [{"label": "string", "url": "string"}]
+    }
   ]
 }
 ```
@@ -104,107 +176,43 @@ All data operations go through the REST API so the filesystem stays consistent:
 {
   "year": 2026,
   "importedAt": "ISO timestamp",
-  "sourceFile": "filename if applicable",
   "goals": [
     {
-      "id": "string",
-      "category": "e.g. Deliver Results – Safety, Schedule, Development",
-      "text": "full goal text",
-      "subItems": ["bullet items under the goal"],
-      "status": "on-track|needs-attention|complete",
-      "q1Notes": "string",
-      "q2Notes": "string",
-      "q3Notes": "string",
-      "q4Notes": "string"
+      "id": "g-1",
+      "category": "Deliver Results",
+      "text": "Full goal text",
+      "subItems": ["bullet items"],
+      "linkedProjects": ["project IDs"],
+      "status": "on-track|needs-attention|complete|discontinued",
+      "q1Notes": "",
+      "q2Notes": "",
+      "q3Notes": "",
+      "q4Notes": ""
     }
   ]
 }
 ```
 
-### goal_project_map.json
-```json
-{
-  "lastUpdated": "ISO timestamp",
-  "mappings": [
-    {
-      "goalId": "string",
-      "projectIds": ["string"],
-      "notes": "how this goal connects to these projects"
-    }
-  ]
-}
-```
+## Non-destructive Goal Updates (Critical)
 
-### Archive files: {id}_{shortname}_{date}.json
-Generated automatically when a project is closed. Contains:
-- Full project snapshot at close time
-- Summary statistics (duration, milestones completed, etc.)
-- Lessons learned (pulled from journal entries tagged to this project)
-- Final status of all milestones
+When importing new goals, NEVER:
+- Delete goals that are missing from the new document — mark as `discontinued`
+- Overwrite quarterly notes that already have content
+- Remove `linkedProjects` references
 
-### Report files: {date}_{type}.md
-Markdown progress reports. Types: `checkin`, `quarterly`, `annual`.
+Always show the user a summary of what changed (added / updated / discontinued counts) before committing.
 
-## Key Behaviors for Claude Code
+## Dependencies
 
-### When asked to update project status
-1. Read `data/state.json`
-2. Find the project and milestone
-3. Update status, add journal entry if significant
-4. Write back to `data/state.json` via API or direct file write
+| Package | Purpose |
+|---------|---------|
+| express ^4.21 | HTTP server |
+| mammoth ^1.8 | .docx → HTML for goals import |
+| multer ^1.4.5-lts | Multipart file upload handling |
+| docx ^9.6 | Word document generation for report export |
 
-### When asked to import goals
-1. Parse the input (goals docs are not structured identically every time — use judgment)
-2. Extract goal categories, individual goals, and sub-items
-3. Check `data/goals/` for existing year file — if it exists, MERGE don't overwrite:
-   - New goals get added
-   - Existing goals get their text updated but preserve status and quarterly notes
-   - Goals that no longer appear get flagged as "removed" but NOT deleted
-   - Goal-to-project mappings in `goal_project_map.json` are preserved
-4. Write to `data/goals/{year}_goals.json`
-5. Prompt Richard to review mappings if new goals don't clearly map to existing projects
+## UI Tabs
 
-### When asked to generate a progress report
-1. Read `data/state.json` for current project status
-2. Read `data/goals/{year}_goals.json` for goals
-3. Read `data/goals/goal_project_map.json` for mappings
-4. Generate a markdown report that connects projects → goals → status
-5. Save to `data/reports/{date}_{type}.md`
-6. Report format should match Lilly check-in structure (goal category → goal → progress notes → linked project status)
+Dashboard · Projects · Tasks · Goals · Timeline · Board · Journal · Reports · Sync · Archive
 
-### When asked to close a project
-1. Generate archive summary with full project snapshot
-2. Pull all journal entries tagged to this project
-3. Calculate statistics (start date from first milestone, duration, completion rate)
-4. Save to `data/archive/{id}_{shortname}_{date}.json`
-5. Remove from active projects in `state.json`
-6. Preserve goal mappings for historical reference (mark as closed in map)
-
-### Non-destructive goal updates (CRITICAL)
-When Richard loads new goals or updates existing ones mid-year:
-- NEVER delete active projects or milestones
-- NEVER overwrite quarterly notes that already have content
-- If a goal is removed from the new goals doc, flag it as "discontinued" — don't delete
-- If a goal is reworded, update the text but preserve the ID and all linked data
-- If goals map to projects that are in-progress, preserve the project and note the goal change in the journal
-- Always show Richard what changed before committing
-
-## LP1 Brand (for any generated UI or reports)
-- Primary red: #E1251B
-- Blue: #0F3A85
-- Green: #144B2D
-- Gold: #FFC709
-- Background blush: #FDE8E5
-- Dark text: #212121
-- Heading font: Times New Roman, Georgia, serif
-- Body font: Arial, Helvetica Neue, sans-serif
-- Footer: "Company Confidential © 2026 Eli Lilly and Company"
-
-## Common Commands
-
-```bash
-npm start                                    # Start server
-node scripts/import-goals.js goals.docx      # Import goals from file
-curl http://localhost:3200/api/state          # Read current state
-curl http://localhost:3200/api/reports        # List reports
-```
+The **Goals** tab shows goals grouped by category with status badges and collapsible Q1–Q4 notes fields, plus a `.docx` upload section at the top.

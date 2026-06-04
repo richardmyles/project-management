@@ -1,12 +1,21 @@
+# Dependencies
 node_modules/
-.env
+
+# Personal data — not tracked
 data/
-uploads/
+config.json
+
+# Build artifacts
 dist/
 build/
-release/
-config.json
-*.lnk
-*.vbs
-*.ps1
-richards-projects/
+
+# Temp uploads
+uploads/
+
+# Claude Code local settings
+.claude/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
