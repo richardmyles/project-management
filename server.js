@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
@@ -36,18 +37,26 @@ function getUpload() {
   return _upload;
 }
 
+let _uploadExtract = null;
+function getUploadExtract() {
+  if (!_uploadExtract) _uploadExtract = require("multer")({ dest: UPLOADS_DIR, limits: { fileSize: 25 * 1024 * 1024 } });
+  return _uploadExtract;
+}
+
 app.use(express.json({ limit: "5mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 function readJSON(fp, fallback) {
   try { if (!fs.existsSync(fp)) return fallback; return JSON.parse(fs.readFileSync(fp, "utf8")); }
-  catch (e) { return fallback; }
+  catch (e) { console.error("readJSON failed for", fp, e.message); return fallback; }
 }
 function writeJSON(fp, data) { fs.writeFileSync(fp, JSON.stringify(data, null, 2), "utf8"); }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function today() { return new Date().toISOString().split("T")[0]; }
+let _configCache = null;
 function getConfig() {
-  return readJSON(CONFIG_FILE, { name: "My", team: "", org: "", primaryColor: "#0F3A85", setupComplete: false });
+  if (!_configCache) _configCache = readJSON(CONFIG_FILE, { name: "My", team: "", org: "", primaryColor: "#0F3A85", setupComplete: false });
+  return _configCache;
 }
 
 // ═══ CONFIG ═══
@@ -55,6 +64,7 @@ app.get("/api/config", (req, res) => { res.json(getConfig()); });
 app.put("/api/config", (req, res) => {
   const updated = { ...getConfig(), ...req.body, setupComplete: true };
   writeJSON(CONFIG_FILE, updated);
+  _configCache = updated;
   res.json({ ok: true, config: updated });
 });
 
@@ -115,7 +125,9 @@ app.patch("/api/project/:id", (req, res) => {
   const state = readJSON(STATE_FILE, { projects: [], journal: [], tasks: [] });
   const idx = state.projects.findIndex(p => p.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: "Not found" });
-  state.projects[idx] = { ...state.projects[idx], ...req.body };
+  const ALLOWED_PROJECT_FIELDS = ["name","shortName","color","owner","sponsor","targetDate","description","dependencies","risks","links","goalRefs","milestones","syncItems","archived"];
+  const updates = Object.fromEntries(Object.entries(req.body).filter(([k]) => ALLOWED_PROJECT_FIELDS.includes(k)));
+  state.projects[idx] = { ...state.projects[idx], ...updates };
   saveState(state); res.json({ ok: true });
 });
 
@@ -592,7 +604,8 @@ app.get("/api/reports", (req, res) => {
   res.json(files.map(f => ({ filename: f, date: f.split("_")[0], type: f.replace(/^\d{4}-\d{2}-\d{2}_/, "").replace(/\.(md|docx)$/, ""), format: f.endsWith(".docx") ? "docx" : "md" })));
 });
 app.get("/api/reports/:filename", (req, res) => {
-  const file = path.join(REPORTS_DIR, req.params.filename);
+  const file = path.resolve(REPORTS_DIR, req.params.filename);
+  if (!file.startsWith(REPORTS_DIR + path.sep) && file !== REPORTS_DIR) return res.status(400).json({ error: "Invalid filename" });
   if (!fs.existsSync(file)) return res.status(404).json({ error: "Not found" });
   if (req.params.filename.endsWith(".docx")) res.download(file);
   else res.type("text/markdown").send(fs.readFileSync(file, "utf8"));
@@ -970,7 +983,8 @@ app.get("/api/archive", (req, res) => {
   res.json(files.map(f => { const d = readJSON(path.join(ARCHIVE_DIR, f), {}); return { filename: f, markdownFile: f.replace(".json", ".md"), closedAt: d.closedAt, projectName: d.project?.name, shortName: d.project?.shortName, completionRate: d.statistics?.completionRate }; }));
 });
 app.get("/api/archive/:filename", (req, res) => {
-  const file = path.join(ARCHIVE_DIR, req.params.filename);
+  const file = path.resolve(ARCHIVE_DIR, req.params.filename);
+  if (!file.startsWith(ARCHIVE_DIR + path.sep) && file !== ARCHIVE_DIR) return res.status(400).json({ error: "Invalid filename" });
   if (!fs.existsSync(file)) return res.status(404).json({ error: "Not found" });
   if (req.params.filename.endsWith(".md")) res.type("text/markdown").send(fs.readFileSync(file, "utf8"));
   else if (req.params.filename.endsWith(".docx")) res.download(file);
@@ -1027,6 +1041,19 @@ const AI_BASE_URL = process.env.AI_BASE_URL || "";
 const AI_MODEL = process.env.AI_MODEL || "claude-sonnet-4-5";
 let _tokenCache = { value: null, expiresAt: 0 };
 
+function makeAnthropicClient(apiKey) {
+  const Anthropic = require("@anthropic-ai/sdk");
+  if (AI_BASE_URL) {
+    // Some corporate gateways require Authorization: Bearer — override the SDK's default x-api-key header
+    return new Anthropic({
+      apiKey: "placeholder",
+      baseURL: AI_BASE_URL,
+      defaultHeaders: { authorization: "Bearer " + apiKey, "x-api-key": undefined },
+    });
+  }
+  return new Anthropic({ apiKey });
+}
+
 function getAIToken() {
   const now = Date.now();
   if (_tokenCache.value && _tokenCache.expiresAt > now + 30000) return _tokenCache.value;
@@ -1052,8 +1079,7 @@ function getAIToken() {
 app.post("/api/claude", async (req, res) => {
   try {
     const apiKey = getAIToken();
-    const Anthropic = require("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey, ...(AI_BASE_URL ? { baseURL: AI_BASE_URL } : {}) });
+    const client = makeAnthropicClient(apiKey);
     const { prompt } = req.body;
     if (!prompt) return res.status(400).json({ error: "prompt required" });
     const mem = getMemory();
@@ -1099,8 +1125,7 @@ app.patch("/api/profile", (req, res) => {
 app.post("/api/profile/generate", async (req, res) => {
   try {
     const apiKey = getAIToken();
-    const Anthropic = require("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey, ...(AI_BASE_URL ? { baseURL: AI_BASE_URL } : {}) });
+    const client = makeAnthropicClient(apiKey);
     const { notes } = readJSON(NOTES_FILE, { notes: [] });
     if (!notes.length) return res.json({ ok: false, error: "No notes to analyze" });
 
@@ -1149,6 +1174,42 @@ ${corpus}`;
 });
 
 // ═══ SCAN NOTES (AI) ═══
+function buildScanSystemPrompt(cfg, existing) {
+  const projectList = existing.length
+    ? existing.map(p => `  {id:"${p.id}", name:"${p.name}", shortName:"${p.shortName}"}`).join("\n")
+    : "  (none yet)";
+  return `You are helping ${cfg.name || "a professional"}${cfg.team ? " (" + cfg.team + ")" : ""}${cfg.org ? " at " + cfg.org : ""} manage their workload.
+
+Analyze the content and extract actionable work items. Follow these rules strictly:
+
+QUALITY OVER QUANTITY: Extract only the most important, distinct items. Aim for 3–8 tasks, 2–5 milestones, and 2–5 journal entries. Never extract every sentence.
+
+CONCISENESS REQUIRED — paraphrase all items, never copy verbatim text:
+  - Task text: 10–80 characters, starts with an action verb (e.g. "Draft MTS validation protocol")
+  - Milestone name: 10–60 characters, a concrete deliverable (e.g. "MTS UAT sign-off complete")
+  - Journal text: 1–2 sentences max
+  - Project name: ≤40 characters
+
+Classify each item as:
+PROJECT — Multi-week initiative with phases and a strategic deliverable. NOT a project: anything completable in 1–2 days.
+MILESTONE — A concrete deliverable or checkpoint within a project. Be generous with milestones — link to existing or plausible new projects.
+TASK — Single discrete action, completable in hours to one day. Starts with a verb.
+JOURNAL — Decision, risk, blocker, or important context worth remembering. Keep to 1–2 sentences.
+SKIP — Other people's responsibilities, admin trivia, or anything redundant with a task/milestone.
+
+Existing projects:
+${projectList}
+
+Return ONLY valid JSON with no markdown fencing:
+{
+  "projects":   [{"name":"≤40 chars","description":"≤80 chars","targetDate":"YYYY-MM-DD or null","confidence":0.9,"sourceHint":"≤12-word quote"}],
+  "milestones": [{"name":"≤60 chars","projectRef":"existing project id OR new project name OR null","target":"YYYY-MM-DD or null","confidence":0.8,"sourceHint":"≤12-word quote"}],
+  "tasks":      [{"text":"≤80 chars, starts with verb","projectRef":"existing project id OR new project name OR null","confidence":0.9,"sourceHint":"≤12-word quote"}],
+  "journal":    [{"text":"1-2 sentences","type":"decision|risk|action|note|meeting","date":"YYYY-MM-DD","confidence":0.9}]
+}
+If a milestone's projectRef names a project not in the existing list, include that project in "projects" too.`;
+}
+
 app.post("/api/scan", (req, res, next) => getUpload().array("files", 20)(req, res, next), async (req, res) => {
   const tempFiles = (req.files || []).map(f => f.path);
   try {
@@ -1197,41 +1258,7 @@ app.post("/api/scan", (req, res, next) => getUpload().array("files", 20)(req, re
 
     if (!textParts.length && !imageBlocks.length) return res.status(400).json({ error: "No content to scan" });
 
-    const projectList = existing.length
-      ? existing.map(p => `  {id:"${p.id}", name:"${p.name}", shortName:"${p.shortName}"}`).join("\n")
-      : "  (none yet)";
-
-    const systemText = `You are helping ${cfg.name || "a professional"}${cfg.team ? " (" + cfg.team + ")" : ""}${cfg.org ? " at " + cfg.org : ""} manage their workload.
-
-Analyze the content and extract actionable work items. Follow these rules strictly:
-
-QUALITY OVER QUANTITY: Extract only the most important, distinct items. Aim for 3–8 tasks, 2–5 milestones, and 2–5 journal entries. Never extract every sentence.
-
-CONCISENESS REQUIRED — paraphrase all items, never copy verbatim text:
-  - Task text: 10–80 characters, starts with an action verb (e.g. "Draft MTS validation protocol")
-  - Milestone name: 10–60 characters, a concrete deliverable (e.g. "MTS UAT sign-off complete")
-  - Journal text: 1–2 sentences max
-  - Project name: ≤40 characters
-
-Classify each item as:
-PROJECT — Multi-week initiative with phases and a strategic deliverable. NOT a project: anything completable in 1–2 days.
-MILESTONE — A concrete deliverable or checkpoint within a project. Be generous with milestones — link to existing or plausible new projects.
-TASK — Single discrete action, completable in hours to one day. Starts with a verb.
-JOURNAL — Decision, risk, blocker, or important context worth remembering. Keep to 1–2 sentences.
-SKIP — Other people's responsibilities, admin trivia, or anything redundant with a task/milestone.
-
-Existing projects:
-${projectList}
-
-Return ONLY valid JSON with no markdown fencing:
-{
-  "projects":   [{"name":"≤40 chars","description":"≤80 chars","targetDate":"YYYY-MM-DD or null","confidence":0.9,"sourceHint":"≤12-word quote"}],
-  "milestones": [{"name":"≤60 chars","projectRef":"existing project id OR new project name OR null","target":"YYYY-MM-DD or null","confidence":0.8,"sourceHint":"≤12-word quote"}],
-  "tasks":      [{"text":"≤80 chars, starts with verb","projectRef":"existing project id OR new project name OR null","confidence":0.9,"sourceHint":"≤12-word quote"}],
-  "journal":    [{"text":"1-2 sentences","type":"decision|risk|action|note|meeting","date":"YYYY-MM-DD","confidence":0.9}]
-}
-If a milestone's projectRef names a project not in the existing list, include that project in "projects" too.`;
-
+    const systemText = buildScanSystemPrompt(cfg, existing);
     const mem = getMemory();
     const userContent = [];
     if (mem) {
@@ -1243,8 +1270,7 @@ If a milestone's projectRef names a project not in the existing list, include th
     );
 
     const apiKey = getAIToken();
-    const Anthropic = require("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey, ...(AI_BASE_URL ? { baseURL: AI_BASE_URL } : {}) });
+    const client = makeAnthropicClient(apiKey);
     const message = await client.messages.create({
       model: AI_MODEL, max_tokens: 4096,
       messages: [{ role: "user", content: userContent }],
@@ -1307,49 +1333,15 @@ app.post("/api/scan/note/:id", async (req, res) => {
     const cfg = getConfig();
     const state = readJSON(STATE_FILE, { projects: [], journal: [], tasks: [] });
     const existing = state.projects.map(p => ({ id: p.id, name: p.name, shortName: p.shortName }));
-    const projectList = existing.length
-      ? existing.map(p => `  {id:"${p.id}", name:"${p.name}", shortName:"${p.shortName}"}`).join("\n")
-      : "  (none yet)";
 
-    const systemText = `You are helping ${cfg.name || "a professional"}${cfg.team ? " (" + cfg.team + ")" : ""}${cfg.org ? " at " + cfg.org : ""} manage their workload.
-
-Analyze the content and extract actionable work items. Follow these rules strictly:
-
-QUALITY OVER QUANTITY: Extract only the most important, distinct items. Aim for 3–8 tasks, 2–5 milestones, and 2–5 journal entries. Never extract every sentence.
-
-CONCISENESS REQUIRED — paraphrase all items, never copy verbatim text:
-  - Task text: 10–80 characters, starts with an action verb
-  - Milestone name: 10–60 characters, a concrete deliverable
-  - Journal text: 1–2 sentences max
-  - Project name: ≤40 characters
-
-Classify each item as:
-PROJECT — Multi-week initiative with phases and a strategic deliverable.
-MILESTONE — A concrete deliverable or checkpoint within a project.
-TASK — Single discrete action, completable in hours to one day. Starts with a verb.
-JOURNAL — Decision, risk, blocker, or important context worth remembering.
-SKIP — Other people's responsibilities, admin trivia, or redundant items.
-
-Existing projects:
-${projectList}
-
-Return ONLY valid JSON with no markdown fencing:
-{
-  "projects":   [{"name":"≤40 chars","description":"≤80 chars","targetDate":"YYYY-MM-DD or null","confidence":0.9,"sourceHint":"≤12-word quote"}],
-  "milestones": [{"name":"≤60 chars","projectRef":"existing project id OR new project name OR null","target":"YYYY-MM-DD or null","confidence":0.8,"sourceHint":"≤12-word quote"}],
-  "tasks":      [{"text":"≤80 chars, starts with verb","projectRef":"existing project id OR new project name OR null","confidence":0.9,"sourceHint":"≤12-word quote"}],
-  "journal":    [{"text":"1-2 sentences","type":"decision|risk|action|note|meeting","date":"YYYY-MM-DD","confidence":0.9}]
-}
-If a milestone's projectRef names a project not in the existing list, include that project in "projects" too.`;
-
+    const systemText = buildScanSystemPrompt(cfg, existing);
     const mem = getMemory();
     const userContent = [];
     if (mem) userContent.push({ type: "text", text: `Project context and memory:\n\n${mem}`, cache_control: { type: "ephemeral" } });
     userContent.push({ type: "text", text: systemText + "\n\nNote: " + (note.title || "Untitled") + "\n\n" + text });
 
     const apiKey = getAIToken();
-    const Anthropic = require("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey, ...(AI_BASE_URL ? { baseURL: AI_BASE_URL } : {}) });
+    const client = makeAnthropicClient(apiKey);
     const message = await client.messages.create({
       model: AI_MODEL, max_tokens: 4096,
       messages: [{ role: "user", content: userContent }],
@@ -1487,8 +1479,7 @@ Rewrite the memory file to be a concise, accurate reference (max 800 words). Inc
 Write in clear, factual prose. No markdown headers needed — plain paragraphs are fine.`;
 
     const apiKey = getAIToken();
-    const Anthropic = require("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey, ...(AI_BASE_URL ? { baseURL: AI_BASE_URL } : {}) });
+    const client = makeAnthropicClient(apiKey);
     const message = await client.messages.create({
       model: AI_MODEL, max_tokens: 1200,
       messages: [{ role: "user", content: refreshPrompt }],
@@ -1504,6 +1495,7 @@ Write in clear, factual prose. No markdown headers needed — plain paragraphs a
 
 // ═══ OBSIDIAN SYNC ═══
 function profileToMarkdown(profile) {
+  const cfg = getConfig();
   const lines = [];
   const dt = new Date().toISOString().slice(0, 10);
   lines.push("---");
@@ -1532,6 +1524,7 @@ function profileToMarkdown(profile) {
 }
 
 app.post("/api/obsidian/push", (req, res) => {
+  if (!OBSIDIAN_PROFILE_FILE) return res.status(400).json({ error: "OBSIDIAN_VAULT not configured" });
   try {
     const profile = readJSON(PROFILE_FILE, null);
     if (!profile) return res.status(404).json({ error: "No profile to push" });
@@ -1547,6 +1540,7 @@ app.post("/api/obsidian/push", (req, res) => {
 });
 
 app.post("/api/obsidian/pull", async (req, res) => {
+  if (!OBSIDIAN_PROFILE_FILE) return res.status(400).json({ error: "OBSIDIAN_VAULT not configured" });
   try {
     const sections = [];
     // Read existing profile.md from vault (if it exists)
@@ -1566,16 +1560,11 @@ app.post("/api/obsidian/pull", async (req, res) => {
         sections.push(`=== VAULT: 01-lp1-work/${f} ===\n${content.slice(0, 2000)}`);
       });
     }
-    // Read existing profile.md from vault if it exists
-    if (fs.existsSync(OBSIDIAN_PROFILE_FILE)) {
-      sections.push("=== VAULT: _claude/artifacts/profile.md ===\n" + fs.readFileSync(OBSIDIAN_PROFILE_FILE, "utf8").slice(0, 3000));
-    }
     if (!sections.length) return res.json({ ok: true, message: "No relevant vault files found", merged: null });
 
     const currentProfile = readJSON(PROFILE_FILE, {});
     const apiKey = getAIToken();
-    const Anthropic = require("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey, ...(AI_BASE_URL ? { baseURL: AI_BASE_URL } : {}) });
+    const client = makeAnthropicClient(apiKey);
 
     // Ask Claude to extract ONLY new additions — small output, easy to parse reliably
     const existingSummary = {
@@ -1821,7 +1810,9 @@ app.patch("/api/tasks/:id", (req, res) => {
   if (!state.tasks) state.tasks = [];
   const task = state.tasks.find(t => t.id === req.params.id);
   if (!task) return res.status(404).json({ error: "Not found" });
-  Object.assign(task, req.body);
+  const ALLOWED_TASK_FIELDS = ["text","status","notes","tags","project","owner","bullets","links","completed"];
+  const updates = Object.fromEntries(Object.entries(req.body).filter(([k]) => ALLOWED_TASK_FIELDS.includes(k)));
+  Object.assign(task, updates);
   if (req.body.status === "done" && !task.completed) task.completed = today();
   if (req.body.status === "open") task.completed = null;
   saveState(state);
@@ -2323,7 +2314,7 @@ function cleanMhtPageHtml(html) {
     .replace(/\s{3,}/g, " ").trim();
 }
 
-app.post("/api/notes/extract", (req, res, next) => getUpload().array("files", 60)(req, res, next), async (req, res) => {
+app.post("/api/notes/extract", (req, res, next) => getUploadExtract().array("files", 60)(req, res, next), async (req, res) => {
   const uploaded = req.files || [];
   if (!uploaded.length) return res.status(400).json({ error: "No files uploaded" });
   const results = [];
@@ -2417,10 +2408,12 @@ app.post("/api/notes/extract", (req, res, next) => getUpload().array("files", 60
   }
 });
 
+const MS_PER_DAY = 864e5;
+
 function getHealth(p) {
   const b = p.milestones.filter(m => m.status === "blocked").length;
   const a = p.milestones.filter(m => m.status === "at-risk").length;
-  const o = p.milestones.filter(m => { if (m.status === "complete" || !m.target) return false; return (new Date(m.target) - new Date()) / 864e5 < 0; }).length;
+  const o = p.milestones.filter(m => { if (m.status === "complete" || !m.target) return false; return (new Date(m.target) - new Date()) / MS_PER_DAY < 0; }).length;
   const c = p.milestones.filter(m => m.status === "complete").length;
   if (b || o > 1) return "CRITICAL"; if (a || o === 1) return "AT RISK";
   if (c === p.milestones.length && p.milestones.length) return "COMPLETE"; return "ON TRACK";
