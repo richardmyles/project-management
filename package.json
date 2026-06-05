@@ -1,6 +1,6 @@
 {
   "name": "my-projects",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Personal project management tool — tracks projects, milestones, goals, risks, and progress reports",
   "main": "electron/main.js",
   "scripts": {
