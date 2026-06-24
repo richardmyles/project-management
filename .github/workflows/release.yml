@@ -24,6 +24,18 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Decode code signing certificate
+        env:
+          CSC_CERTIFICATE_BASE64: ${{ secrets.CSC_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          $pfxBytes = [Convert]::FromBase64String($env:CSC_CERTIFICATE_BASE64)
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
+          echo "CSC_LINK=$pfxPath" >> $env:GITHUB_ENV
+          echo "CSC_KEY_PASSWORD=$env:CSC_KEY_PASSWORD" >> $env:GITHUB_ENV
+        shell: pwsh
+
       - name: Build and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
