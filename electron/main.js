@@ -3,7 +3,10 @@ const path = require("path");
 const fs = require("fs");
 const http = require("http");
 
-const PORT = 3201;
+// Load .env from the project root so PORT and ELECTRON_DATA_ROOT are available
+try { require("dotenv").config({ path: path.join(__dirname, "..", ".env") }); } catch (_) {}
+
+const PORT = process.env.PORT || 3201;
 let mainWindow;
 let tray;
 
@@ -157,8 +160,11 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
-    // Use userData for distributable — portable exe extracts to a temp dir
-    const dataRoot = app.getPath("userData");
+    // ELECTRON_DATA_ROOT=local → use project dir (personal dev copies)
+    // Default → use userData (distributable builds, portable .exe)
+    const dataRoot = process.env.ELECTRON_DATA_ROOT === "local"
+      ? path.join(__dirname, "..")
+      : app.getPath("userData");
     ensureData(dataRoot);
     process.env.APP_DATA_PATH = dataRoot;
     process.env.ELECTRON_APP = "1";
