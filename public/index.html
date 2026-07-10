@@ -1008,7 +1008,7 @@ function startBriefingPoll(){
     if(!r)return;
     briefingData=r.data;briefingStatus=r.status||{status:"idle"};
     if(briefingStatus.status!=="running"){clearInterval(briefingPoll);briefingPoll=null;}
-    if(!noteEditId) render();
+    if(!noteEditId) safeRender();
   },5000);
 }
 function startElapsedTick(){
