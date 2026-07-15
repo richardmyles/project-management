@@ -367,7 +367,7 @@ window.goalDescTab=(e,id)=>{
 };
 window.openAddGoalModal=function(prefillCat,existingGoal){
   if(existingGoal){
-    goalBuilderState={_id:existingGoal.id,category:existingGoal.category||'',text:existingGoal.text||'',description:existingGoal.description||(existingGoal.subItems?.length?(existingGoal.subItems.map(s=>'• '+s).join('\n')):''),orgAlignment:existingGoal.orgAlignment||'',dueDate:existingGoal.dueDate||'',subItems:[...(existingGoal.subItems||[])],status:existingGoal.status||'on-track',q1Notes:existingGoal.q1Notes||'',q2Notes:existingGoal.q2Notes||'',q3Notes:existingGoal.q3Notes||'',q4Notes:existingGoal.q4Notes||''};
+    goalBuilderState={_id:existingGoal.id,category:existingGoal.category||'',text:existingGoal.text||'',description:existingGoal.description||'',orgAlignment:existingGoal.orgAlignment||'',dueDate:existingGoal.dueDate||'',subItems:[...(existingGoal.subItems||[])],status:existingGoal.status||'on-track',q1Notes:existingGoal.q1Notes||'',q2Notes:existingGoal.q2Notes||'',q3Notes:existingGoal.q3Notes||'',q4Notes:existingGoal.q4Notes||''};
   } else {
     goalBuilderState={category:prefillCat||'',text:'',description:'',orgAlignment:'',dueDate:'',subItems:[],status:'on-track',q1Notes:'',q2Notes:'',q3Notes:'',q4Notes:''};
   }
@@ -504,8 +504,10 @@ window.saveGoalBuilder=async function(){
   }
   goals=await api('/api/goals');goalBuilderOpen=false;render();toast(goalBuilderState._id?'Goal updated':'Goal added');
 };
-window.gbAddSubItem=function(){const inp=document.getElementById('gb-si-new');const val=(inp?.value||'').trim();if(!val)return;goalBuilderState.subItems.push(val);inp.value='';const list=document.getElementById('gb-si-list');if(list){const i=goalBuilderState.subItems.length-1;const div=document.createElement('div');div.className='gb-si-row';div.innerHTML='<span style="color:#aaa;font-size:11px">•</span><span style="flex:1;font-size:12px">'+esc(val)+'</span><button class="x-btn" onclick="gbRmSubItem('+i+')">×</button>';list.appendChild(div);}};
-window.gbRmSubItem=function(i){goalBuilderState.subItems.splice(i,1);const list=document.getElementById('gb-si-list');if(list)list.innerHTML=goalBuilderState.subItems.map((s,j)=>'<div class="gb-si-row"><span style="color:#aaa;font-size:11px">•</span><span style="flex:1;font-size:12px">'+esc(s)+'</span><button class="x-btn" onclick="gbRmSubItem('+j+')">×</button></div>').join('');};
+window.gbAddSubItem=function(){const inp=document.getElementById('gb-si-new');const val=(inp?.value||'').trim();if(!val)return;goalBuilderState.subItems.push(val);inp.value='';gbRenderSubItems();inp.focus();};
+window.gbEditSubItem=function(i,val){goalBuilderState.subItems[i]=val;};
+window.gbRmSubItem=function(i){goalBuilderState.subItems.splice(i,1);gbRenderSubItems();};
+function gbRenderSubItems(){const list=document.getElementById('gb-si-list');if(!list)return;list.innerHTML=goalBuilderState.subItems.map((s,j)=>'<div style="display:flex;align-items:center;gap:6px;padding:3px 0"><span style="color:var(--green);flex-shrink:0">•</span><input value="'+esc(s)+'" onchange="gbEditSubItem('+j+',this.value)" style="flex:1;font-size:12px;padding:3px 6px;border:1px solid transparent;border-radius:3px;background:transparent" onfocus="this.style.borderColor=\'var(--green)\';this.style.background=\'#fff\'" onblur="this.style.borderColor=\'transparent\';this.style.background=\'transparent\'"><button class="x-btn" onclick="gbRmSubItem('+j+')">×</button></div>').join('');}
 function rGoalBuilder(){
   let h='<div class="card" style="border-top:4px solid var(--green)">';
   h+='<div class="card-b" style="border:none;padding-top:14px">';
@@ -556,6 +558,14 @@ function rGoalBuilder(){
   h+='<select id="gb-status" style="width:100%;font-size:13px;padding:7px 10px;border-radius:4px;border:1px solid #ddd">';
   [['on-track','✅ On Track'],['in-progress','🔵 In Progress'],['needs-attention','⚠️ Needs Attention'],['complete','✔ Complete']].forEach(([v,l])=>{h+='<option value="'+v+'"'+(goalBuilderState.status===v?' selected':'')+'>'+l+'</option>';});
   h+='</select></div>';
+  // Sub-Items / Deliverables
+  h+='<div style="background:#f9fdf9;border:1px solid #d4edda;border-radius:8px;padding:16px">';
+  h+='<div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Sub-Items / Deliverables</div>';
+  h+='<div id="gb-si-list">';
+  (goalBuilderState.subItems||[]).forEach((s,j)=>{h+='<div style="display:flex;align-items:center;gap:6px;padding:3px 0"><span style="color:var(--green);flex-shrink:0">•</span><input value="'+esc(s)+'" onchange="gbEditSubItem('+j+',this.value)" style="flex:1;font-size:12px;padding:3px 6px;border:1px solid transparent;border-radius:3px;background:transparent" onfocus="this.style.borderColor=\'var(--green)\';this.style.background=\'#fff\'" onblur="this.style.borderColor=\'transparent\';this.style.background=\'transparent\'"><button class="x-btn" onclick="gbRmSubItem('+j+')">×</button></div>';});
+  h+='</div>';
+  h+='<div style="display:flex;gap:4px;margin-top:6px"><input id="gb-si-new" placeholder="Add sub-item..." style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #ddd;border-radius:4px" onkeydown="if(event.key===\'Enter\'){event.preventDefault();gbAddSubItem();}"><button class="btn sm" style="background:var(--green);padding:3px 10px;font-size:10px" onclick="gbAddSubItem()">+</button></div>';
+  h+='</div>';
   // Quarterly notes — full-width vertical stack
   h+='<div style="background:#f5f7fa;border:1px solid #e2e8f0;border-radius:8px;padding:16px;flex:1">';
   h+='<div style="font-size:10px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Quarterly Notes</div>';
