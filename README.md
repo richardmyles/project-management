@@ -12,7 +12,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 | File | When to use |
 |------|-------------|
-| `My Projects Setup 1.0.0.exe` | Standard installer — adds to Start Menu and desktop |
+| `My Projects Setup 1.0.5.exe` | Standard installer — adds to Start Menu and desktop |
 | `MyProjects-portable.exe` | No install needed — run from anywhere, including a USB drive |
 
 ---
@@ -21,7 +21,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 ### Installer (recommended)
 
-1. Download `My Projects Setup 1.0.0.exe`
+1. Download `My Projects Setup 1.0.5.exe`
 2. Run it and follow the prompts
 3. Launch **My Projects** from the Start Menu or desktop shortcut
 
@@ -83,13 +83,17 @@ See `.env.example` in the repository for a full template.
 
 ## Features
 
-**Dashboard** — live summary of all active projects, overdue milestones, and open tasks
+**Dashboard** — live summary of all active projects, overdue milestones, open tasks, and a daily AI-generated briefing
 
 **Projects** — create and manage projects with milestones, risks, dependencies, links, and goal references. Each milestone has a status (complete / in-progress / at-risk / blocked / not-started), owner, notes, and sub-bullets.
 
 **Tasks** — standalone task list with tags, project links, owners, and completion tracking
 
-**Goals** — import annual goals from a Word document (`.docx`). Goals are grouped by category with quarterly notes fields (Q1–Q4) and status badges. Importing is non-destructive: existing notes and statuses are preserved; removed goals are marked discontinued rather than deleted.
+**Notes** — freeform notes, separate from the project journal
+
+**Profile** — your personal profile, generated and refreshed with AI assistance
+
+**Goals** — import annual goals from a Word document (`.docx`). Goals are grouped by category with quarterly notes fields (Q1–Q4), status badges, and structured sub-items. Importing is non-destructive: existing notes and statuses are preserved; removed goals are marked discontinued rather than deleted.
 
 **Timeline** — Gantt-style view of milestones across all projects
 
@@ -97,7 +101,9 @@ See `.env.example` in the repository for a full template.
 
 **Journal** — decision log, lessons learned, risk notes, meeting notes, and actions — tagged by project and type
 
-**Reports** — generate progress reports at four detail levels (summary / check-in / full / comprehensive) and export as Word (`.docx`) or markdown
+**Reports** — generate progress reports at four detail levels (summary / check-in / full / comprehensive) and export as Word (`.docx`) or markdown, with optional AI-assisted generation
+
+**1:1s** — track one-on-one meeting notes
 
 **Archive** — closed project snapshots with auto-generated closure reports
 
@@ -107,7 +113,7 @@ See `.env.example` in the repository for a full template.
 
 ## Running from Source
 
-Requires [Node.js](https://nodejs.org/) 18 or later.
+Requires [Node.js](https://nodejs.org/) 24 or later.
 
 ```bash
 git clone https://github.com/richardmyles/project-management.git
@@ -135,10 +141,14 @@ All data is stored locally in the app's working directory:
 ```
 data/
 ├── state.json          # Projects, tasks, journal
-├── goals/              # Annual goal files
-├── reports/            # Generated reports (.md and .docx)
-└── archive/            # Closed project snapshots
-config.json             # Your name, team, org, accent colour
+├── goals/               # Annual goal files
+├── reports/             # Generated reports (.md and .docx)
+├── archive/             # Closed project snapshots
+├── notes.json           # Standalone notes
+├── profile.json         # AI-generated profile
+├── briefing/            # Daily AI briefing data
+└── .history/            # Undo/redo snapshots
+config.json              # Your name, team, org, accent colour
 ```
 
 No data is sent anywhere unless you explicitly use the AI features, which call the configured API endpoint.
