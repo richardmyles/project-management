@@ -1054,6 +1054,14 @@ function makeAnthropicClient(apiKey) {
   return new Anthropic({ apiKey });
 }
 
+// Gateway may prepend a "thinking" block when extended thinking is enabled,
+// so the text block is not reliably at content[0].
+function extractAIText(message) {
+  const block = message.content.find(b => b.type === "text");
+  if (!block) throw new Error("No text content in AI response");
+  return block.text;
+}
+
 function getAIToken() {
   const now = Date.now();
   if (_tokenCache.value && _tokenCache.expiresAt > now + 30000) return _tokenCache.value;
@@ -1094,7 +1102,7 @@ app.post("/api/claude", async (req, res) => {
       max_tokens: 2048,
       messages: [{ role: "user", content: userContent }]
     });
-    res.json({ ok: true, text: message.content[0].text });
+    res.json({ ok: true, text: extractAIText(message) });
   } catch (e) {
     console.error("Claude API error:", e.message);
     res.status(500).json({ error: e.message });
@@ -1159,7 +1167,7 @@ ${corpus}`;
       messages: [{ role: "user", content: prompt }]
     });
 
-    const raw = message.content[0].text;
+    const raw = extractAIText(message);
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return res.status(500).json({ ok: false, error: "No JSON in response" });
     const profile = JSON.parse(jsonMatch[0]);
@@ -1276,7 +1284,7 @@ app.post("/api/scan", (req, res, next) => getUpload().array("files", 20)(req, re
       messages: [{ role: "user", content: userContent }],
     });
 
-    let raw = message.content[0].text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+    let raw = extractAIText(message).trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
     let suggestions;
     try { suggestions = JSON.parse(raw); }
     catch(e) { return res.status(500).json({ error: "Claude returned unparseable JSON", raw: raw.slice(0,300) }); }
@@ -1347,7 +1355,7 @@ app.post("/api/scan/note/:id", async (req, res) => {
       messages: [{ role: "user", content: userContent }],
     });
 
-    let raw = message.content[0].text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+    let raw = extractAIText(message).trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
     let suggestions;
     try { suggestions = JSON.parse(raw); }
     catch(e) { return res.status(500).json({ error: "Claude returned unparseable JSON", raw: raw.slice(0,300) }); }
@@ -1484,7 +1492,7 @@ Write in clear, factual prose. No markdown headers needed — plain paragraphs a
       model: AI_MODEL, max_tokens: 1200,
       messages: [{ role: "user", content: refreshPrompt }],
     });
-    const newMemory = message.content[0].text.trim();
+    const newMemory = extractAIText(message).trim();
     saveMemory(newMemory);
     res.json({ ok: true, content: newMemory });
   } catch(e) {
@@ -1603,7 +1611,7 @@ Return JSON with ONLY the new items to add (omit any array that has nothing new)
       model: AI_MODEL, max_tokens: 1500,
       messages: [{ role: "user", content: prompt }],
     });
-    const raw = message.content[0].text;
+    const raw = extractAIText(message);
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return res.status(500).json({ ok: false, error: "No JSON in response from Claude" });
     const additions = JSON.parse(jsonMatch[0]);
