@@ -202,6 +202,17 @@ When importing new goals, NEVER:
 
 Always show the user a summary of what changed (added / updated / discontinued counts) before committing.
 
+## Release Workflow
+
+Standard workflow for any release/push to GitHub:
+
+1. **Pull first** — `git fetch origin` and rebase/merge local commits onto `origin/master` before pushing, to avoid rejected pushes.
+2. **Bump the version** in `package.json` before pushing:
+   - Default: patch bump (`1.0.5` → `1.0.6`) for bug fixes and small updates.
+   - Minor/major bump only when explicitly specified as a bigger update (e.g. `1.0.x` → `1.1.0` or `2.0.0`).
+3. **Commit message** must summarize what changed — not just the fix, but a short list of updates included in that release.
+4. **Push** with the version bump included in the same commit (or a follow-up `chore: bump version to X` commit).
+
 ## Dependencies
 
 | Package | Purpose |
