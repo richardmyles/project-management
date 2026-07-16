@@ -5,9 +5,18 @@
  * Patches the public GitHub source files with Richard's personal overrides.
  * Run automatically via the post-merge git hook, or manually: node scripts/apply-personal-config.js
  *
+ * Design principle: critical runtime behaviour (PORT, data path) is driven by .env
+ * variables, not by source patches. That way upstream changes to electron/main.js
+ * or server.js can never silently break the personal copy — the env vars win
+ * regardless of what strings surround them in the source.
+ *
+ * Remaining patches (branding, UI text, icon) are cosmetic and non-critical:
+ * if they fail the app still runs correctly.
+ *
  * What this does:
+ *   .env             — validates required personal vars are present
  *   server.js        — prepends dotenv.config() if missing
- *   electron/main.js — port from env, dev data root, app-builder-lib tray icon, personal branding
+ *   electron/main.js — tray icon, personal branding (PORT + data root now via .env)
  *   public/index.html — UI placeholder text, SSO label, pharma AI prompt
  *   package.json     — personal name/description/author/appId, adds dotenv dep, removes electron-updater
  */
@@ -17,6 +26,7 @@ const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
 let errors = 0;
+let warnings = 0;
 let patches = 0;
 
 function read(rel) {
@@ -27,7 +37,7 @@ function write(rel, content) {
   fs.writeFileSync(path.join(ROOT, rel), content, "utf8");
 }
 
-function patch(rel, description, fn) {
+function patch(rel, description, fn, { critical = false } = {}) {
   const original = read(rel);
   const patched = fn(original);
   if (patched === original) {
@@ -35,8 +45,10 @@ function patch(rel, description, fn) {
     return;
   }
   if (patched === null) {
-    console.error(`  ✗ ${rel} — ${description} FAILED (pattern not found)`);
-    errors++;
+    const tag = critical ? "✗ CRITICAL" : "⚠ WARN";
+    const msg = `  ${tag}: ${rel} — ${description} FAILED (pattern not found — upstream may have changed)`;
+    if (critical) { console.error(msg); errors++; }
+    else           { console.warn(msg);  warnings++; }
     return;
   }
   write(rel, patched);
@@ -45,59 +57,57 @@ function patch(rel, description, fn) {
 }
 
 function replace(content, from, to) {
-  if (content.includes(to)) return content;  // already patched
-  if (!content.includes(from)) return null;  // pattern not found — upstream may have changed
+  if (content.includes(to)) return content;   // already patched
+  if (!content.includes(from)) return null;   // pattern not found
   return content.replace(from, to);
 }
 
 console.log("\n=== Applying personal config overrides ===\n");
 
-// ─── server.js ─────────────────────────────────────────────────────────────
+// ─── .env validation (critical) ────────────────────────────────────────────
+// These vars control runtime behaviour. If missing the app will misbehave.
+
+console.log("  Checking .env...");
+const envPath = path.join(ROOT, ".env");
+if (!fs.existsSync(envPath)) {
+  console.error("  ✗ CRITICAL: .env not found — personal configuration missing!");
+  console.error("    Create .env with: AI_BASE_URL, AI_TOKEN_CMD, AI_MODEL, PORT=3200, ELECTRON_DATA_ROOT=local");
+  errors++;
+} else {
+  const envContent = fs.readFileSync(envPath, "utf8");
+  const required = [
+    ["ELECTRON_DATA_ROOT", "Controls where Electron reads/writes data. Must be 'local' for personal copy."],
+    ["PORT",               "HTTP port for the Express server. Should be 3200 for personal copy."],
+    ["AI_TOKEN_CMD",       "Corporate SSO token command for AI features."],
+    ["AI_BASE_URL",        "Corporate AI gateway URL."],
+  ];
+  for (const [key, purpose] of required) {
+    if (envContent.includes(`${key}=`)) {
+      console.log(`  ✓ .env — ${key} is set`);
+    } else {
+      console.error(`  ✗ CRITICAL: .env — ${key} is missing (${purpose})`);
+      errors++;
+    }
+  }
+}
+
+// ─── server.js (critical) ──────────────────────────────────────────────────
 
 patch("server.js", "prepend dotenv.config()", content => {
   if (content.startsWith('require("dotenv").config();')) return content;
   const marker = 'const express = require("express");';
   return replace(content, marker, `require("dotenv").config();\n${marker}`);
-});
+}, { critical: true });
 
 // ─── electron/main.js ──────────────────────────────────────────────────────
-
-patch("electron/main.js", "port from env", content =>
-  replace(content, "const PORT = 3201;", "const PORT = process.env.PORT || 3200;")
-);
-
-patch("electron/main.js", "dev data root uses project dir", content =>
-  replace(
-    content,
-    `    // Use userData for distributable — portable exe extracts to a temp dir
-    const dataRoot = app.getPath("userData");`,
-    `    // In dev (npm run electron), use the project directory so data/ is the live folder.
-    // In packaged builds, use userData so data survives app updates.
-    const dataRoot = app.isPackaged
-      ? app.getPath("userData")
-      : path.join(__dirname, "..");`
-  )
-);
+// PORT and ELECTRON_DATA_ROOT are handled by .env — no source patches needed.
+// Remaining patches are cosmetic (branding, icon).
 
 patch("electron/main.js", "tray icon from app-builder-lib", content => {
-  const from = `function createTray() {
-  const iconPath = path.join(__dirname, "icon.ico");
-  console.log(\`[icon] trying tray icon: \${iconPath}\`);
-  const icon = fs.existsSync(iconPath)
-    ? nativeImage.createFromPath(iconPath)
-    : nativeImage.createEmpty();
-  if (icon.isEmpty()) console.warn("[icon] tray icon is empty - check icon.ico");
-  else console.log("[icon] tray icon loaded OK");
-  tray = new Tray(icon);`;
-  const to = `function createTray() {
-  const iconPath = path.join(
-    __dirname, "..", "node_modules", "app-builder-lib",
-    "templates", "icons", "electron-linux", "32x32.png"
-  );
-  const icon = fs.existsSync(iconPath)
-    ? nativeImage.createFromPath(iconPath)
-    : nativeImage.createEmpty();
-  tray = new Tray(icon);`;
+  if (content.includes("app-builder-lib") && content.includes("32x32.png")) return content;
+  // Try the original upstream pattern
+  const from = 'const iconPath = path.join(__dirname, "icon.ico");';
+  const to = 'const iconPath = path.join(\n    __dirname, "..", "node_modules", "app-builder-lib",\n    "templates", "icons", "electron-linux", "32x32.png"\n  );';
   return replace(content, from, to);
 });
 
@@ -169,14 +179,10 @@ patch("package.json", "personal name/description/author/appId/branding", content
   pkg.description = "Richard's Projects — Manufacturing Sciences project management, goals tracking, and progress reporting";
   pkg.author = "Richard — Manufacturing Sciences";
 
-  // Ensure dotenv is a dependency
   pkg.dependencies = pkg.dependencies || {};
   if (!pkg.dependencies.dotenv) pkg.dependencies.dotenv = "^16.4.5";
-
-  // Remove electron-updater (not needed in personal copy)
   delete pkg.dependencies["electron-updater"];
 
-  // Personal electron-builder branding
   if (pkg.build) {
     pkg.build.appId = "com.richards.projects";
     pkg.build.productName = "Richard's Projects";
@@ -187,15 +193,18 @@ patch("package.json", "personal name/description/author/appId/branding", content
 
   const patched = JSON.stringify(pkg, null, 2) + "\n";
   return patched === content ? content : patched;
-});
+}, { critical: true });
 
 // ─── Summary ───────────────────────────────────────────────────────────────
 
 console.log();
 if (errors > 0) {
-  console.error(`Done with ${errors} error(s). Some patches did not apply — the public source may have changed.`);
-  console.error("Check the patterns above and update this script if needed.");
+  console.error(`\n⛔  ${errors} CRITICAL error(s) — personal copy may be broken. Fix before running the app.`);
   process.exit(1);
+} else if (warnings > 0) {
+  console.warn(`\n⚠  ${warnings} cosmetic patch(es) failed (branding/icons only — app will still work correctly).`);
+  console.warn("   Update the patch patterns in this script if the upstream source changed.");
+  process.exit(0);
 } else {
-  console.log(`Done. ${patches} patch(es) applied.\n`);
+  console.log(`✅  Done. ${patches} patch(es) applied.\n`);
 }
