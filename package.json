@@ -33,7 +33,8 @@
       {
         "provider": "github",
         "owner": "richardmyles",
-        "repo": "project-management"
+        "repo": "project-management",
+        "releaseType": "release"
       }
     ],
     "directories": {
