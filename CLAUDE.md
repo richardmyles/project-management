@@ -204,14 +204,17 @@ Always show the user a summary of what changed (added / updated / discontinued c
 
 ## Release Workflow
 
-Standard workflow for any release/push to GitHub:
+Standard workflow for any release/push to GitHub. **Every release must ship with the built `.exe` (installer + portable) attached** — a release with no downloadable app is not a complete release.
 
 1. **Pull first** — `git fetch origin` and rebase/merge local commits onto `origin/master` before pushing, to avoid rejected pushes.
 2. **Bump the version** in `package.json` before pushing:
    - Default: patch bump (`1.0.5` → `1.0.6`) for bug fixes and small updates.
    - Minor/major bump only when explicitly specified as a bigger update (e.g. `1.0.x` → `1.1.0` or `2.0.0`).
 3. **Commit message** must summarize what changed — not just the fix, but a short list of updates included in that release.
-4. **Push** with the version bump included in the same commit (or a follow-up `chore: bump version to X` commit).
+4. **Push the commit, then push a matching tag** (`git tag vX.Y.Z && git push origin vX.Y.Z`) — the tag push is what triggers `.github/workflows/release.yml`, which builds the Windows installer/portable `.exe` and uploads them via `electron-builder --publish always`.
+5. **Do NOT create or edit the GitHub release before the workflow finishes.** `gh release create` (or any release created before the build completes) creates a *published* release; electron-builder's publish step then finds an "incompatible" existing release type and silently skips every asset upload — this broke releases v1.0.2 through v1.0.5 with zero `.exe` attached and no visible error. Let the workflow create the release itself.
+6. **Wait for the workflow, then verify assets attached** — `gh run watch` or `gh run list --workflow=release.yml --limit 1`, then `gh release view vX.Y.Z --json assets` and confirm the installer `.exe`, `.exe.blockmap`, portable `.exe`, and `latest.yml` are all present. If assets are empty, do not consider the release done — check the run log for `existing type not compatible with publishing type`.
+7. **Only after assets are confirmed**, add/refine release notes with `gh release edit vX.Y.Z --notes "..."` — this only edits metadata and never touches uploaded assets.
 
 ## Dependencies
 
