@@ -4,6 +4,7 @@ node_modules/
 # Personal data — not tracked
 data/
 config.json
+.env
 
 # Build artifacts
 dist/
@@ -19,3 +20,10 @@ uploads/
 .DS_Store
 Thumbs.db
 *.log
+
+# Local-only helpers and duplicates — not part of the public repo
+Create Shortcut.ps1
+Launch Richards Projects - Shortcut.lnk
+Launch Richards Projects.vbs
+scripts/export-onenote.ps1
+/richards-projects/
