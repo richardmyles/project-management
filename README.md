@@ -77,7 +77,9 @@ AI_MODEL=claude-sonnet-4-5
 AI_TOKEN_CMD=your-cli-tool token
 ```
 
-See `.env.example` in the repository for a full template.
+See `.env.example` in the repository for a full template. `.env` is gitignored — never commit it, since it holds your API key or gateway credentials.
+
+**Troubleshooting:** if AI responses come back empty, check your gateway's response shape. The app reads the first `text`-type content block rather than assuming it's always at index 0, since some gateways prepend a non-standard block (e.g. an extended-thinking preamble) before the actual answer.
 
 ---
 
