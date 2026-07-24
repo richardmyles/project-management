@@ -302,7 +302,11 @@ const _debTimers={};
 function debounce(key,fn,delay){clearTimeout(_debTimers[key]);_debTimers[key]=setTimeout(fn,delay);}
 function ds(){debounce('__state-save__',()=>save(),600);}
 // Re-render only when no input/textarea/select has focus — prevents wiping mid-type text
-function safeRender(){const ae=document.activeElement;if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT')){ae.addEventListener('blur',()=>render(),{once:true});return;}render();}
+// If focused, mark as pending — next explicit render() or save() will pick it up
+let _renderPending=false;
+function safeRender(){const ae=document.activeElement;if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT')){_renderPending=true;return;}render();}
+// Check for pending render after any blur (catches the deferred case)
+document.addEventListener('focusout',()=>{if(_renderPending){_renderPending=false;setTimeout(()=>{const ae=document.activeElement;if(!ae||!['INPUT','TEXTAREA','SELECT'].includes(ae.tagName))render();},50);}});
 window.togMs=(pid,msId)=>{const k=pid+"-"+msId;expMs[k]=!expMs[k];render();};
 window.msEdit=(pid,i,f,v)=>{fp(pid).milestones[i][f]=v;ds();};
 window.msMove=(pid,i,dir)=>{const ms=fp(pid).milestones;const j=i+dir;if(j<0||j>=ms.length)return;[ms[i],ms[j]]=[ms[j],ms[i]];save();};
@@ -344,7 +348,7 @@ window.boardSetStatus=(pid,msId,newStatus)=>{const p=fp(pid);const m=p.milestone
 window.updateNPSugg=()=>{const name=document.getElementById("np-n")?.value||"";const desc=document.getElementById("np-ds")?.value||"";const sugg=suggestGoals(name+" "+desc);const wrap=document.getElementById("np-sugg-wrap");const cont=document.getElementById("np-sugg");if(!wrap||!cont)return;if(!sugg.length){wrap.style.display="none";return;}wrap.style.display="";cont.innerHTML=sugg.map(g=>{const ref=makeGoalRef(g.id,g._year);const sel=npGoalRefs.some(r=>r===ref||r===g.id);const lbl=esc((g.category.split(/[–—-]/).pop().trim()||g.text).slice(0,36));return'<button class="sug-chip" style="border-color:var(--blue);background:'+(sel?"var(--blue)":"transparent")+';color:'+(sel?"#fff":"var(--blue)")+'" onclick="toggleNPGoal(\''+ref+'\')">'+lbl+'</button>';}).join("");};
 window.toggleNPGoal=ref=>{const i=npGoalRefs.findIndex(r=>r===ref||r===parseGoalRef(ref).id);if(i===-1)npGoalRefs.push(ref);else npGoalRefs.splice(i,1);updateNPSugg();};
 window.updateTKSugg=text=>{const cont=document.getElementById("tk-sugg");if(!cont)return;const sugg=suggestGoals(text,2);if(!sugg.length){cont.innerHTML="";return;}cont.innerHTML='<span style="font-size:9px;color:#bbb;line-height:24px">Tag:</span>'+sugg.map(g=>{const full=g.text;const lbl=full.length>36?full.slice(0,36)+'…':full;return'<button class="sug-chip" style="border-color:var(--purple);color:var(--purple);background:transparent;font-size:10px;padding:2px 8px;border-radius:10px" onclick="tkTagGoal(\''+esc(full).replace(/'/g,"&#39;")+'\')" title="'+esc(g.category)+': '+esc(full)+'">'+esc(lbl)+'</button>';}).join("");};
-window.tkTagGoal=tag=>{const el=document.getElementById("tk-tags");if(!el)return;const clean=tag.replace(/,/g,";").trim();const ex=el.value.split(",").map(s=>s.trim()).filter(Boolean);if(!ex.includes(clean))el.value=[...ex,clean].join(", ");};
+window.tkTagGoal=tag=>{const el=document.getElementById("tk-tags");if(!el)return;const clean=tag.replace(/,/g,";").trim();const ex=el.value.split(",").map(s=>s.trim()).filter(Boolean);if(!ex.includes(clean)){el.value=[...ex,clean].join(", ");_tkForm.tags=el.value;}};
 window.togGoal=id=>{expGoals[id]=!expGoals[id];render();};
 window.toggleGoalQ=(id,q)=>{if(!goalQSel[id])goalQSel[id]=["q1","q2","q3","q4"];const idx=goalQSel[id].indexOf(q);if(idx===-1){goalQSel[id].push(q);goalQSel[id].sort();}else if(goalQSel[id].length>1)goalQSel[id].splice(idx,1);render();};
 window.setGoalDetail=ref=>{goalDetailView=ref;render();};
@@ -546,7 +550,7 @@ function rGoalBuilder(){
   h+='<span style="font-size:9px;color:#ccc;margin-left:2px">Tab on bullet → sub-bullet · - Space → bullet</span>';
   h+='</div>';
   h+='<textarea id="gb-desc" rows="10" placeholder="Describe this goal. Use • bullets, ◦ sub-bullets, _underlined text_, or plain paragraphs." style="width:100%;box-sizing:border-box;font-size:12px;padding:8px 10px;border-radius:4px;border:1px solid #ddd;resize:vertical;line-height:1.6;font-family:inherit" onkeydown="gbDescTab(event)">'+esc(goalBuilderState.description||'')+'</textarea></div>';
-  h+='<div style="margin-bottom:10px"><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:4px">ORGANIZATION ALIGNMENT</label><input id="gb-org" value="'+esc(goalBuilderState.orgAlignment||'')+'" placeholder="e.g. Business Unit Build Out, Corporate Safety..." style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd"></div>';
+  h+='<div style="margin-bottom:10px"><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:4px">ORGANIZATION ALIGNMENT</label><input id="gb-org" value="'+esc(goalBuilderState.orgAlignment||'')+'" placeholder="e.g. LP1 Build Out, Corporate Safety..." style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd"></div>';
   h+='<div><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:4px">DUE DATE</label><input type="date" id="gb-due" value="'+esc(goalBuilderState.dueDate||'')+'" style="font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd"></div>';
   h+='</div>';
   h+='</div>'; // left col
@@ -641,6 +645,8 @@ function render(){
 
   h+='<div class="footer">'+(cfg.org?'© '+new Date().getFullYear()+' '+esc(cfg.org):'© '+new Date().getFullYear())+'</div></div>';
   document.getElementById("app").innerHTML=h;
+  // Restore task form state after DOM rebuild
+  if(tab==="tasks")_tkRestoreForm();
 }
 
 // ═══ DASHBOARD ═══
@@ -751,7 +757,7 @@ function rProjects(ap){
   ap.forEach(p=>{const comp=p.milestones.filter(m=>m.status==="complete").length,isE=exp[p.id],hl=gh(p),hc=hl.c==="#FFC709"?"#212121":"#fff";
     h+='<div class="card" style="border-top:4px solid '+p.color+'"><div class="card-h" onclick="tog(\''+p.id+'\')"><div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap"><span style="font-family:var(--fh);font-size:16px;font-weight:700;color:'+p.color+'">'+esc(p.shortName)+'</span><span style="font-size:12px;color:#555">'+esc(p.name)+'</span><span style="padding:1px 8px;border-radius:10px;background:'+hl.c+';color:'+hc+';font-size:9px;font-weight:700">'+hl.l+'</span></div><div style="display:flex;gap:12px;font-size:10px;color:#999;margin-bottom:5px"><span>Target: '+fdf(p.targetDate)+'</span><span>'+comp+'/'+p.milestones.length+'</span><span>'+esc(p.owner)+'</span></div>'+pb(p.milestones)+'</div><span style="font-size:15px;color:#ccc;transition:transform .2s;'+(isE?"transform:rotate(180deg)":"")+'">▾</span></div>';
     if(isE){
-      h+='<div class="card-b"><textarea class="ie-desc" onchange="descEdit(\''+p.id+'\',this.value)">'+esc(p.description)+'</textarea>';
+      h+='<div class="card-b"><textarea class="ie-desc" oninput="descEdit(\''+p.id+'\',this.value)">'+esc(p.description)+'</textarea>';
       // Project links bar
       const pLinks=p.links||[];
       h+='<div class="proj-links">';
@@ -761,18 +767,18 @@ function rProjects(ap){
       h+='<div style="margin:8px 0 12px"><div class="sh"><span class="sh-t">Milestones</span><button class="sh-a" onclick="openModal(\'addMs\',\''+p.id+'\')">+ Add</button></div>';
       h+='<div class="ms-h"><span></span><span>Milestone</span><span>Target</span><span>Status</span><span></span></div>';
       p.milestones.forEach((m,i)=>{const d=dt(m.target),ov=d!==null&&d<0&&m.status!=="complete",sm=SM[m.status],isExpanded=expMs[p.id+"-"+m.id];
-        h+='<div class="ms-r'+(m.status==="complete"?" dn":"")+'" onclick="togMs(\''+p.id+'\',\''+m.id+'\')"><div style="display:flex;flex-direction:column;gap:1px"><button class="ms-mv" onclick="event.stopPropagation();msMove(\''+p.id+'\','+i+',-1)">▲</button><button class="ms-mv" onclick="event.stopPropagation();msMove(\''+p.id+'\','+i+',1)">▼</button></div><div onclick="event.stopPropagation()"><input class="ie" value="'+esc(m.name)+'" onchange="msEdit(\''+p.id+'\','+i+',\'name\',this.value)"><div style="display:flex;gap:6px;align-items:center;margin-top:1px">'+(m.owner?'<span style="font-size:9px;color:var(--blue);font-weight:600">👤 '+esc(m.owner)+'</span>':'')+((m.bullets||[]).length?'<span style="font-size:9px;color:#bbb">'+m.bullets.length+' notes</span>':'')+((m.links||[]).length?'<span style="font-size:9px;color:#bbb">'+m.links.length+' links</span>':'')+((!m.owner&&!(m.bullets||[]).length&&!(m.links||[]).length)?'<span style="font-size:9px;color:#ddd;font-style:italic">click to expand</span>':'')+'</div></div><div onclick="event.stopPropagation()"><input type="date" class="ie-date" value="'+(m.target||'')+'" onchange="msEdit(\''+p.id+'\','+i+',\'target\',this.value)">'+(ov?'<div style="font-size:9px;font-weight:700;color:var(--red)">'+Math.abs(d)+'d late</div>':(!ov&&d!==null&&d<=14&&m.status!=="complete"?'<div style="font-size:9px;font-weight:600;color:var(--gold)">'+d+'d</div>':""))+'</div><select class="ms-sel" style="border:1.5px solid '+sm.bg+';color:'+sm.bg+'" onclick="event.stopPropagation()" onchange="setMs(\''+p.id+'\','+i+',this.value)">'+ST.map(s=>'<option value="'+s.v+'"'+(m.status===s.v?" selected":"")+'>'+s.l+'</option>').join('')+'</select><button class="x-btn" onclick="event.stopPropagation();rmMs(\''+p.id+'\','+i+')">×</button></div>';
+        h+='<div class="ms-r'+(m.status==="complete"?" dn":"")+'" onclick="togMs(\''+p.id+'\',\''+m.id+'\')"><div style="display:flex;flex-direction:column;gap:1px"><button class="ms-mv" onclick="event.stopPropagation();msMove(\''+p.id+'\','+i+',-1)">▲</button><button class="ms-mv" onclick="event.stopPropagation();msMove(\''+p.id+'\','+i+',1)">▼</button></div><div onclick="event.stopPropagation()"><input class="ie" value="'+esc(m.name)+'" oninput="msEdit(\''+p.id+'\','+i+',\'name\',this.value)"><div style="display:flex;gap:6px;align-items:center;margin-top:1px">'+(m.owner?'<span style="font-size:9px;color:var(--blue);font-weight:600">👤 '+esc(m.owner)+'</span>':'')+((m.bullets||[]).length?'<span style="font-size:9px;color:#bbb">'+m.bullets.length+' notes</span>':'')+((m.links||[]).length?'<span style="font-size:9px;color:#bbb">'+m.links.length+' links</span>':'')+((!m.owner&&!(m.bullets||[]).length&&!(m.links||[]).length)?'<span style="font-size:9px;color:#ddd;font-style:italic">click to expand</span>':'')+'</div></div><div onclick="event.stopPropagation()"><input type="date" class="ie-date" value="'+(m.target||'')+'" onchange="msEdit(\''+p.id+'\','+i+',\'target\',this.value)">'+(ov?'<div style="font-size:9px;font-weight:700;color:var(--red)">'+Math.abs(d)+'d late</div>':(!ov&&d!==null&&d<=14&&m.status!=="complete"?'<div style="font-size:9px;font-weight:600;color:var(--gold)">'+d+'d</div>':""))+'</div><select class="ms-sel" style="border:1.5px solid '+sm.bg+';color:'+sm.bg+'" onclick="event.stopPropagation()" onchange="setMs(\''+p.id+'\','+i+',this.value)">'+ST.map(s=>'<option value="'+s.v+'"'+(m.status===s.v?" selected":"")+'>'+s.l+'</option>').join('')+'</select><button class="x-btn" onclick="event.stopPropagation();rmMs(\''+p.id+'\','+i+')">×</button></div>';
         // Expanded detail panel
         if(isExpanded){
           h+='<div class="ms-exp">';
           // Owner
-          h+='<div class="ms-exp-row"><span class="ms-exp-label">Owner</span><div class="ms-exp-content"><input class="ie" style="font-size:11px" value="'+(m.owner?esc(m.owner):'')+'" placeholder="Assign owner..." onchange="msOwner(\''+p.id+'\','+i+',this.value)"></div></div>';
-          // Summary note
-          h+='<div class="ms-exp-row"><span class="ms-exp-label">Summary</span><div class="ms-exp-content"><input class="ie" style="font-size:11px" value="'+(m.notes?esc(m.notes):'')+'" placeholder="Quick summary..." onchange="msEdit(\''+p.id+'\','+i+',\'notes\',this.value)"></div></div>';
+          h+='<div class="ms-exp-row"><span class="ms-exp-label">Owner</span><div class="ms-exp-content"><input class="ie" style="font-size:11px" value="'+(m.owner?esc(m.owner):'')+'" placeholder="Assign owner..." oninput="msOwner(\''+p.id+'\','+i+',this.value)"></div></div>';
+          // Summary note — textarea for longer text
+          h+='<div class="ms-exp-row"><span class="ms-exp-label">Summary</span><div class="ms-exp-content"><textarea class="ie" style="font-size:11px;min-height:48px;resize:vertical;line-height:1.4;padding:6px 8px" placeholder="Quick summary or detailed notes..." oninput="msEdit(\''+p.id+'\','+i+',\'notes\',this.value)">'+esc(m.notes||'')+'</textarea></div></div>';
           // Bullet notes
           h+='<div class="ms-exp-row"><span class="ms-exp-label">Notes</span><div class="ms-exp-content">';
           (m.bullets||[]).forEach((b,bi)=>{
-            h+='<div class="ms-bullet"><span class="ms-bullet-dot">•</span><input value="'+esc(b)+'" onchange="editMsBullet(\''+p.id+'\','+i+','+bi+',this.value)" placeholder="..."><button class="x-btn" style="font-size:13px" onclick="rmMsBullet(\''+p.id+'\','+i+','+bi+')">×</button></div>';
+            h+='<div class="ms-bullet"><span class="ms-bullet-dot">•</span><input value="'+esc(b)+'" oninput="editMsBullet(\''+p.id+'\','+i+','+bi+',this.value)" placeholder="..."><button class="x-btn" style="font-size:13px" onclick="rmMsBullet(\''+p.id+'\','+i+','+bi+')">×</button></div>';
           });
           h+='<button style="font-size:10px;color:var(--blue);border:none;background:none;cursor:pointer;padding:2px 0" onclick="addMsBullet(\''+p.id+'\','+i+')">+ Add bullet</button>';
           h+='</div></div>';
@@ -1174,30 +1180,38 @@ function r1on1(){
 }
 
 // ═══ TASKS ═══
-window.togTk=id=>{expTk[id]=!expTk[id];render();};
+// Persistent form state — survives render() cycles
+let _tkForm={text:"",proj:"none",tags:""};
+function _tkSaveForm(){const t=document.getElementById("tk-text");const p=document.getElementById("tk-proj");const g=document.getElementById("tk-tags");if(t)_tkForm.text=t.value;if(p)_tkForm.proj=p.value;if(g)_tkForm.tags=g.value;}
+function _tkRestoreForm(){const t=document.getElementById("tk-text");const p=document.getElementById("tk-proj");const g=document.getElementById("tk-tags");if(t&&_tkForm.text)t.value=_tkForm.text;if(p&&_tkForm.proj)p.value=_tkForm.proj;if(g&&_tkForm.tags)g.value=_tkForm.tags;}
+window.togTk=id=>{_tkSaveForm();expTk[id]=!expTk[id];render();};
 window.addTask=()=>{const t=document.getElementById("tk-text").value.trim();if(!t)return;const proj=document.getElementById("tk-proj")?.value||null;const tags=(document.getElementById("tk-tags")?.value||"").split(",").map(s=>s.trim()).filter(Boolean);
-  api("/api/tasks",{method:"POST",body:JSON.stringify({text:t,notes:"",tags,project:proj==="none"?null:proj,owner:"",bullets:[],links:[]})}).then(()=>load());};
-window.toggleTask=async(id,done)=>{await api("/api/tasks/"+id,{method:"PATCH",body:JSON.stringify({status:done?"done":"open"})});toast(done?"Done!":"Reopened");await load();};
-window.rmTask=async id=>{if(confirm("Delete?")){await api("/api/tasks/"+id,{method:"DELETE"});await load();}};
-// Rich task handlers — patch via API
-function patchTask(id,data){api("/api/tasks/"+id,{method:"PATCH",body:JSON.stringify(data)}).then(r=>{if(r.ok&&r.task){const i=(state.tasks||[]).findIndex(t=>t.id===id);if(i!==-1)state.tasks[i]={...state.tasks[i],...r.task};}safeRender();});}
-window.tkOwner=(id,v)=>{patchTask(id,{owner:v});};
+  _tkForm={text:"",proj:"none",tags:""};
+  if(!state.tasks)state.tasks=[];
+  const task={id:uid(),text:t,status:"open",created:td(),completed:null,notes:"",tags,project:proj==="none"?null:proj,owner:"",bullets:[],links:[]};
+  state.tasks.unshift(task);render();toast("Added");
+  api("/api/tasks",{method:"POST",body:JSON.stringify({text:t,notes:"",tags,project:proj==="none"?null:proj,owner:"",bullets:[],links:[]})}).then(r=>{if(r.ok&&r.task){const i=(state.tasks||[]).findIndex(x=>x.id===task.id);if(i!==-1)state.tasks[i]=r.task;}}).catch(()=>{toast("Save failed — retrying...");load();});};
+window.toggleTask=async(id,done)=>{_tkSaveForm();const task=(state.tasks||[]).find(t=>t.id===id);if(task){task.status=done?"done":"open";task.completed=done?td():null;}render();toast(done?"Done!":"Reopened");await api("/api/tasks/"+id,{method:"PATCH",body:JSON.stringify({status:done?"done":"open"})});};
+window.rmTask=async id=>{if(!confirm("Delete?"))return;_tkSaveForm();state.tasks=(state.tasks||[]).filter(t=>t.id!==id);render();await api("/api/tasks/"+id,{method:"DELETE"});};
+// Rich task handlers — patch via API (no re-render unless needed)
+function patchTask(id,data){api("/api/tasks/"+id,{method:"PATCH",body:JSON.stringify(data)}).then(r=>{if(r.ok&&r.task){const i=(state.tasks||[]).findIndex(t=>t.id===id);if(i!==-1)state.tasks[i]={...state.tasks[i],...r.task};}});}
+window.tkOwner=(id,v)=>{const task=(state.tasks||[]).find(t=>t.id===id);if(task)task.owner=v;debounce('tk-owner-'+id,()=>patchTask(id,{owner:v}),600);};
 window.tkNotes=(id,v)=>{const task=(state.tasks||[]).find(t=>t.id===id);if(task){task.notes=v;}debounce('tk-notes-'+id,()=>patchTask(id,{notes:v}),600);};
-window.addTkBullet=id=>{const task=(state.tasks||[]).find(t=>t.id===id);if(!task)return;if(!task.bullets)task.bullets=[];task.bullets.push("");patchTask(id,{bullets:task.bullets});};
+window.addTkBullet=id=>{_tkSaveForm();const task=(state.tasks||[]).find(t=>t.id===id);if(!task)return;if(!task.bullets)task.bullets=[];task.bullets.push("");patchTask(id,{bullets:task.bullets});render();};
 window.editTkBullet=(id,bi,v)=>{const task=(state.tasks||[]).find(t=>t.id===id);if(!task||!task.bullets)return;task.bullets[bi]=v;debounce('tk-bullet-'+id,()=>patchTask(id,{bullets:task.bullets}),600);};
-window.rmTkBullet=(id,bi)=>{const task=(state.tasks||[]).find(t=>t.id===id);if(!task||!task.bullets)return;task.bullets.splice(bi,1);patchTask(id,{bullets:task.bullets});};
-window.addTkLink=id=>{inputModal("Add Link",[{id:'l',label:'Label',placeholder:'e.g. Reference doc'},{id:'u',label:'URL',placeholder:'https://...'}],(label,url)=>{if(!label||!url)return;const task=(state.tasks||[]).find(t=>t.id===id);if(!task)return;if(!task.links)task.links=[];task.links.push({label,url});patchTask(id,{links:task.links});});};
-window.rmTkLink=(id,li)=>{const task=(state.tasks||[]).find(t=>t.id===id);if(!task||!task.links)return;task.links.splice(li,1);patchTask(id,{links:task.links});};
-window.addTkTag=(id,tag)=>{const v=tag.trim();if(!v)return;const task=(state.tasks||[]).find(t=>t.id===id);if(!task)return;if(!task.tags)task.tags=[];if(!task.tags.includes(v)){task.tags.push(v);patchTask(id,{tags:task.tags});}};
-window.rmTkTag=(id,ti)=>{const task=(state.tasks||[]).find(t=>t.id===id);if(!task||!task.tags)return;task.tags.splice(ti,1);patchTask(id,{tags:task.tags});};
-window.setTF=f=>{taskFilter=f;render();};
+window.rmTkBullet=(id,bi)=>{_tkSaveForm();const task=(state.tasks||[]).find(t=>t.id===id);if(!task||!task.bullets)return;task.bullets.splice(bi,1);patchTask(id,{bullets:task.bullets});render();};
+window.addTkLink=id=>{_tkSaveForm();inputModal("Add Link",[{id:'l',label:'Label',placeholder:'e.g. Reference doc'},{id:'u',label:'URL',placeholder:'https://...'}],(label,url)=>{if(!label||!url)return;const task=(state.tasks||[]).find(t=>t.id===id);if(!task)return;if(!task.links)task.links=[];task.links.push({label,url});patchTask(id,{links:task.links});render();});};
+window.rmTkLink=(id,li)=>{_tkSaveForm();const task=(state.tasks||[]).find(t=>t.id===id);if(!task||!task.links)return;task.links.splice(li,1);patchTask(id,{links:task.links});render();};
+window.addTkTag=(id,tag)=>{_tkSaveForm();const v=tag.trim();if(!v)return;const task=(state.tasks||[]).find(t=>t.id===id);if(!task)return;if(!task.tags)task.tags=[];if(!task.tags.includes(v)){task.tags.push(v);patchTask(id,{tags:task.tags});render();}};
+window.rmTkTag=(id,ti)=>{_tkSaveForm();const task=(state.tasks||[]).find(t=>t.id===id);if(!task||!task.tags)return;task.tags.splice(ti,1);patchTask(id,{tags:task.tags});render();};
+window.setTF=f=>{_tkSaveForm();taskFilter=f;render();};
 
 function rTasks(ap){
   const tasks=state.tasks||[];
   const filtered=taskFilter==="all"?tasks:tasks.filter(t=>t.status===taskFilter);
   const oc=tasks.filter(t=>t.status==="open").length,dc=tasks.filter(t=>t.status==="done").length;
   let h='<div class="card" style="border-top:4px solid var(--purple)"><div class="card-b" style="border:none;padding-top:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-family:var(--fh);font-size:16px;font-weight:700;color:var(--purple)">Tasks</div><div style="font-size:11px;color:#888">'+oc+' open · '+dc+' done</div></div><p style="font-size:11px;color:#999;margin-bottom:12px">Ad-hoc work, quick assignments, one-off deliverables. Click any task to expand.</p>';
-  h+='<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap"><input id="tk-text" placeholder="What needs doing?" style="flex:1;min-width:180px;font-size:12px;padding:6px 10px;border-radius:4px;border:1px solid #ddd" onkeydown="if(event.key===\'Enter\')addTask()" oninput="updateTKSugg(this.value)"><select id="tk-proj" style="font-size:11px;padding:5px 8px;border-radius:4px;border:1px solid #ddd"><option value="none">No project</option>'+ap.map(p=>'<option value="'+p.id+'">'+esc(p.shortName)+'</option>').join('')+'</select><input id="tk-tags" placeholder="Tags (comma sep)" style="width:130px;font-size:11px;padding:5px 8px;border-radius:4px;border:1px solid #ddd"><button class="btn sm" style="background:var(--purple)" onclick="addTask()">Add</button></div>';
+  h+='<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap"><input id="tk-text" placeholder="What needs doing?" style="flex:1;min-width:180px;font-size:12px;padding:6px 10px;border-radius:4px;border:1px solid #ddd" onkeydown="if(event.key===\'Enter\')addTask()" oninput="_tkForm.text=this.value;updateTKSugg(this.value)"><select id="tk-proj" style="font-size:11px;padding:5px 8px;border-radius:4px;border:1px solid #ddd" onchange="_tkForm.proj=this.value"><option value="none">No project</option>'+ap.map(p=>'<option value="'+p.id+'">'+esc(p.shortName)+'</option>').join('')+'</select><input id="tk-tags" placeholder="Tags (comma sep)" style="width:130px;font-size:11px;padding:5px 8px;border-radius:4px;border:1px solid #ddd" oninput="_tkForm.tags=this.value"><button class="btn sm" style="background:var(--purple)" onclick="addTask()">Add</button></div>';
   h+='<div id="tk-sugg" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;align-items:center;min-height:20px"></div>';
   h+='<div style="display:flex;gap:4px;margin-bottom:10px">';
   ["all","open","done"].forEach(f=>{h+='<span class="pill" style="border-color:var(--purple);'+(taskFilter===f?"background:var(--purple);color:#fff":"color:var(--purple);background:transparent")+'" onclick="setTF(\''+f+'\')">'+f.charAt(0).toUpperCase()+f.slice(1)+(f==="open"?" ("+oc+")":f==="done"?" ("+dc+")":"")+'</span>';});
@@ -1224,9 +1238,9 @@ function rTasks(ap){
     if(isExp){
       h+='<div class="ms-exp" style="padding-left:16px">';
       // Owner
-      h+='<div class="ms-exp-row"><span class="ms-exp-label">Owner</span><div class="ms-exp-content"><input class="ie" style="font-size:11px" value="'+(t.owner?esc(t.owner):'')+'" placeholder="Assign owner..." onchange="tkOwner(\''+t.id+'\',this.value)"></div></div>';
-      // Summary note
-      h+='<div class="ms-exp-row"><span class="ms-exp-label">Summary</span><div class="ms-exp-content"><input class="ie" style="font-size:11px" value="'+(t.notes?esc(t.notes):'')+'" placeholder="Quick summary..." onchange="tkNotes(\''+t.id+'\',this.value)"></div></div>';
+      h+='<div class="ms-exp-row"><span class="ms-exp-label">Owner</span><div class="ms-exp-content"><input class="ie" style="font-size:11px" value="'+(t.owner?esc(t.owner):'')+'" placeholder="Assign owner..." oninput="tkOwner(\''+t.id+'\',this.value)"></div></div>';
+      // Summary note — textarea for longer documentation
+      h+='<div class="ms-exp-row"><span class="ms-exp-label">Summary</span><div class="ms-exp-content"><textarea class="ie" style="font-size:11px;min-height:48px;resize:vertical;line-height:1.4;padding:6px 8px" placeholder="Quick summary or detailed notes..." oninput="tkNotes(\''+t.id+'\',this.value)">'+esc(t.notes||'')+'</textarea></div></div>';
       // Tags
       h+='<div class="ms-exp-row"><span class="ms-exp-label">Tags</span><div class="ms-exp-content"><div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">';
       (t.tags||[]).forEach((tag,ti)=>{h+='<span style="font-size:9px;padding:1px 5px;border-radius:6px;background:#e0e0e0;color:#666;display:inline-flex;align-items:center;gap:3px">'+esc(tag)+'<button onclick="event.stopPropagation();rmTkTag(\''+t.id+'\','+ti+')" style="border:none;background:none;cursor:pointer;color:#999;padding:0;font-size:11px;line-height:1">×</button></span>';});
@@ -1434,7 +1448,7 @@ function rGoals(){
 }
 
 // ═══ SETTINGS ═══
-window.openSettings=()=>{showModal("Settings",'<div class="mf"><label class="ml">Your Name</label><input class="mi" id="st-name" value="'+esc(cfg.name||'')+'"></div><div class="mf"><label class="ml">Team / Group</label><input class="mi" id="st-team" value="'+esc(cfg.team||'')+'"></div><div class="mf"><label class="ml">Organization</label><input class="mi" id="st-org" value="'+esc(cfg.org||'')+'"></div><div class="mf"><label class="ml">Accent Color</label><div style="display:flex;align-items:center;gap:8px"><input type="color" id="st-color" value="'+(cfg.primaryColor||'#0F3A85')+'" oninput="document.getElementById(\'st-color-lbl\').textContent=this.value;document.documentElement.style.setProperty(\'--primary\',this.value)" style="width:40px;height:32px;border:1px solid #ddd;border-radius:4px;cursor:pointer"><span id="st-color-lbl" style="font-size:12px;color:#888">'+(cfg.primaryColor||'#0F3A85')+'</span></div></div><div style="background:#f0f4f0;border:1px solid #c8dcc8;border-radius:6px;padding:8px 12px;font-size:11px;color:#144B2D;margin-top:4px">✓ AI features enabled</div><div class="ma"><button class="btn sm ol" style="color:#999;border-color:#999" onclick="closeModal()">Cancel</button><button class="btn sm" style="background:var(--primary)" onclick="saveSettings()">Save</button></div>');};
+window.openSettings=()=>{showModal("Settings",'<div class="mf"><label class="ml">Your Name</label><input class="mi" id="st-name" value="'+esc(cfg.name||'')+'"></div><div class="mf"><label class="ml">Team / Group</label><input class="mi" id="st-team" value="'+esc(cfg.team||'')+'"></div><div class="mf"><label class="ml">Organization</label><input class="mi" id="st-org" value="'+esc(cfg.org||'')+'"></div><div class="mf"><label class="ml">Accent Color</label><div style="display:flex;align-items:center;gap:8px"><input type="color" id="st-color" value="'+(cfg.primaryColor||'#0F3A85')+'" oninput="document.getElementById(\'st-color-lbl\').textContent=this.value;document.documentElement.style.setProperty(\'--primary\',this.value)" style="width:40px;height:32px;border:1px solid #ddd;border-radius:4px;cursor:pointer"><span id="st-color-lbl" style="font-size:12px;color:#888">'+(cfg.primaryColor||'#0F3A85')+'</span></div></div><div style="background:#f0f4f0;border:1px solid #c8dcc8;border-radius:6px;padding:8px 12px;font-size:11px;color:#144B2D;margin-top:4px">✓ AI connected via Lilly SSO (lilly-code)</div><div class="ma"><button class="btn sm ol" style="color:#999;border-color:#999" onclick="closeModal()">Cancel</button><button class="btn sm" style="background:var(--primary)" onclick="saveSettings()">Save</button></div>');};
 window.saveSettings=async()=>{const name=document.getElementById("st-name").value.trim()||cfg.name;const team=document.getElementById("st-team").value.trim();const org=document.getElementById("st-org").value.trim();const color=document.getElementById("st-color").value;await api("/api/config",{method:"PUT",body:JSON.stringify({name,team,org,primaryColor:color,setupComplete:true})});cfg={...cfg,name,team,org,primaryColor:color};document.documentElement.style.setProperty("--primary",color);document.title=name+"'s Projects";closeModal();toast("Settings saved");render();};
 
 // ═══ AI HELPERS ═══
@@ -1638,7 +1652,7 @@ function rNoteEditor(){
   h+='<input id="nm-title" placeholder="Note title" value="'+esc(existing?.title||'')+'" style="font-size:22px;font-weight:700;padding:4px 0;border:none;border-bottom:2px solid #e0e0e0;font-family:var(--fh);outline:none;width:100%;background:transparent">';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
   h+='<div><label style="font-size:10px;color:#888;font-weight:600">NOTEBOOK</label><input id="nm-nb" list="nm-nb-list" value="'+esc(nb)+'" placeholder="e.g. Work" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd"><datalist id="nm-nb-list">'+allNbs.map(n=>'<option value="'+esc(n)+'">').join('')+'</datalist></div>';
-  h+='<div><label style="font-size:10px;color:#888;font-weight:600">SECTION</label><input id="nm-sec" list="nm-sec-list" value="'+esc(sec)+'" placeholder="e.g. Work Projects" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd"><datalist id="nm-sec-list">'+allSecs.map(s=>'<option value="'+esc(s)+'">').join('')+'</datalist></div>';
+  h+='<div><label style="font-size:10px;color:#888;font-weight:600">SECTION</label><input id="nm-sec" list="nm-sec-list" value="'+esc(sec)+'" placeholder="e.g. LP1 Projects" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd"><datalist id="nm-sec-list">'+allSecs.map(s=>'<option value="'+esc(s)+'">').join('')+'</datalist></div>';
   h+='</div>';
   if(hasHtml){
     h+='<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><label style="font-size:10px;color:#888;font-weight:600">CONTENT</label><button id="nm-edit-btn" class="btn sm ol" style="font-size:9px;padding:2px 7px" onclick="window._nmEditMode=!window._nmEditMode;document.getElementById(\'nm-html-view\').style.display=window._nmEditMode?\'none\':\'block\';document.getElementById(\'nm-content\').style.display=window._nmEditMode?\'block\':\'none\';this.textContent=window._nmEditMode?\'View\':\'Edit text\'">Edit text</button><span style="font-size:9px;color:#aaa">Editing clears rich formatting</span></div>';
@@ -2004,7 +2018,7 @@ function rProfileEdit(){
   // Left col
   h+='<div>';
   h+=card('OVERVIEW','<textarea id="pe-summary" rows="4" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd;resize:vertical;line-height:1.5">'+esc(pe.summary||'')+'</textarea>');
-  h+=card('ROLE',inp('pe-role',pe.role,'e.g. Sr. Engineer, Product Team'));
+  h+=card('ROLE',inp('pe-role',pe.role,'e.g. Sr. Engineer, LP1 TSMS'));
   h+=card('WORK THEMES',chipEdit('workThemes'));
   h+=card('ACTIVE PROJECTS',chipEdit('activeProjects'));
   h+=card('INTERESTS',chipEdit('interests'));
@@ -2298,7 +2312,7 @@ window.aiRisks=async()=>{
   });
   const journal=state.journal.slice(0,15);
   if(journal.length){ctx+="\nRECENT JOURNAL:\n";journal.forEach(j=>{const pr=state.projects.find(p=>p.id===j.project);ctx+=j.date+" ["+(pr?.shortName||"ALL")+"] "+j.type+": "+j.text+"\n";});}
-  const prompt="You are a project risk analyst reviewing a project portfolio.\n\nReview the portfolio data below and identify the top 3–5 risks or concerns that need attention. For each risk:\n- Give it a short title\n- Rate severity: High / Medium / Low\n- Write 1–2 sentences explaining why it is a concern\n- Suggest one concrete next action\n\nBe specific and grounded in the data provided."+ctx+getPinnedNotesContext();
+  const prompt="You are a project risk analyst reviewing a project portfolio for a pharma/manufacturing science team at Lilly.\n\nReview the portfolio data below and identify the top 3–5 risks or concerns that need attention. For each risk:\n- Give it a short title\n- Rate severity: High / Medium / Low\n- Write 1–2 sentences explaining why it is a concern\n- Suggest one concrete next action\n\nBe specific and grounded in the data provided."+ctx+getPinnedNotesContext();
   try{
     const r=await api("/api/claude",{method:"POST",body:JSON.stringify({prompt})});
     if(r.ok)out.innerHTML=esc(r.text).replace(/\n/g,"<br>");

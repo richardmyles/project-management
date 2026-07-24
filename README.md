@@ -12,7 +12,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 | File | When to use |
 |------|-------------|
-| `My Projects Setup 1.0.5.exe` | Standard installer — adds to Start Menu and desktop |
+| `My Projects Setup 1.0.7.exe` | Standard installer — adds to Start Menu and desktop |
 | `MyProjects-portable.exe` | No install needed — run from anywhere, including a USB drive |
 
 ---
@@ -21,7 +21,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 ### Installer (recommended)
 
-1. Download `My Projects Setup 1.0.5.exe`
+1. Download `My Projects Setup 1.0.7.exe`
 2. Run it and follow the prompts
 3. Launch **My Projects** from the Start Menu or desktop shortcut
 
