@@ -1,4 +1,4 @@
-require("dotenv").config();
+try { require("dotenv").config(); } catch (_) { /* dotenv is optional in packaged builds */ }
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
