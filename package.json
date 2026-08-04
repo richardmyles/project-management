@@ -1,6 +1,6 @@
 {
   "name": "my-projects",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Personal project management tool — tracks projects, milestones, goals, risks, and progress reports",
   "main": "electron/main.js",
   "scripts": {
@@ -16,6 +16,7 @@
     "adm-zip": "^0.5.16",
     "cheerio": "^1.2.0",
     "docx": "^9.6.1",
+    "dotenv": "^16.4.7",
     "electron-updater": "^6.3.9",
     "express": "^4.21.0",
     "mammoth": "^1.8.0",
