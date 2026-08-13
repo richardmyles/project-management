@@ -12,7 +12,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 | File | When to use |
 |------|-------------|
-| `My Projects Setup 1.0.9.exe` | Standard installer — adds to Start Menu and desktop |
+| `My Projects Setup 1.0.10.exe` | Standard installer — adds to Start Menu and desktop |
 | `MyProjects-portable.exe` | No install needed — run from anywhere, including a USB drive |
 
 ---
@@ -21,7 +21,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 ### Installer (recommended)
 
-1. Download `My Projects Setup 1.0.9.exe`
+1. Download `My Projects Setup 1.0.10.exe`
 2. Run it and follow the prompts
 3. Launch **My Projects** from the Start Menu or desktop shortcut
 
@@ -89,7 +89,7 @@ See `.env.example` in the repository for a full template. `.env` is gitignored �
 
 **Projects** — create and manage projects with milestones, risks, dependencies, links, and goal references. Each milestone has a status (complete / in-progress / at-risk / blocked / not-started), owner, notes, and sub-bullets.
 
-**Tasks** — standalone task list with tags, project links, owners, and completion tracking
+**Tasks** — standalone task list with tags, project links, owners, and completion tracking; task text, notes, and owner are directly editable inline
 
 **Notes** — freeform notes, separate from the project journal
 
