@@ -1196,6 +1196,7 @@ window.rmTask=async id=>{if(!confirm("Delete?"))return;_tkSaveForm();state.tasks
 // Rich task handlers — patch via API (no re-render unless needed)
 function patchTask(id,data){api("/api/tasks/"+id,{method:"PATCH",body:JSON.stringify(data)}).then(r=>{if(r.ok&&r.task){const i=(state.tasks||[]).findIndex(t=>t.id===id);if(i!==-1)state.tasks[i]={...state.tasks[i],...r.task};}});}
 window.tkOwner=(id,v)=>{const task=(state.tasks||[]).find(t=>t.id===id);if(task)task.owner=v;debounce('tk-owner-'+id,()=>patchTask(id,{owner:v}),600);};
+window.tkText=(id,v)=>{const task=(state.tasks||[]).find(t=>t.id===id);if(task)task.text=v;debounce('tk-text-'+id,()=>patchTask(id,{text:v}),600);};
 window.tkNotes=(id,v)=>{const task=(state.tasks||[]).find(t=>t.id===id);if(task){task.notes=v;}debounce('tk-notes-'+id,()=>patchTask(id,{notes:v}),600);};
 window.addTkBullet=id=>{_tkSaveForm();const task=(state.tasks||[]).find(t=>t.id===id);if(!task)return;if(!task.bullets)task.bullets=[];task.bullets.push("");patchTask(id,{bullets:task.bullets});render();};
 window.editTkBullet=(id,bi,v)=>{const task=(state.tasks||[]).find(t=>t.id===id);if(!task||!task.bullets)return;task.bullets[bi]=v;debounce('tk-bullet-'+id,()=>patchTask(id,{bullets:task.bullets}),600);};
@@ -1223,7 +1224,7 @@ function rTasks(ap){
     // Main row
     h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;cursor:pointer" onclick="togTk(\''+t.id+'\')">';
     h+='<input type="checkbox" '+(dn?"checked":"")+' onclick="event.stopPropagation()" onchange="toggleTask(\''+t.id+'\',this.checked)" style="margin-top:3px;accent-color:var(--purple);cursor:pointer;flex-shrink:0">';
-    h+='<div style="flex:1"><div style="font-size:12px;'+(dn?"text-decoration:line-through;color:#999":"")+'">'+esc(t.text)+'</div>';
+    h+='<div style="flex:1"><div onclick="event.stopPropagation()"><input class="ie" style="font-size:12px;'+(dn?"text-decoration:line-through;color:#999":"")+'" value="'+esc(t.text)+'" oninput="tkText(\''+t.id+'\',this.value)"></div>';
     h+='<div style="display:flex;gap:4px;margin-top:2px;flex-wrap:wrap;align-items:center">';
     if(proj)h+='<span style="font-size:9px;padding:1px 5px;border-radius:6px;background:'+proj.color+';color:#fff">'+esc(proj.shortName)+'</span>';
     (t.tags||[]).forEach(tag=>{h+='<span style="font-size:9px;padding:1px 5px;border-radius:6px;background:#e0e0e0;color:#666">'+esc(tag)+'</span>';});
