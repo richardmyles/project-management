@@ -87,15 +87,31 @@ app.put("/api/config", (req, res) => {
   res.json({ ok: true, config: updated, vaultPathExists, oneNoteExportPathExists });
 });
 
-// ═══ QUICK NOTE ═══
-app.get("/api/quicknote", (req, res) => {
-  res.json(readJSON(QUICKNOTE_FILE, { text: "", updated: null }));
-});
-app.put("/api/quicknote", (req, res) => {
-  const updated = { text: req.body.text || "", updated: new Date().toISOString() };
-  writeJSON(QUICKNOTE_FILE, updated);
-  res.json({ ok: true, quicknote: updated });
-});
+// ═══ STICKY NOTES MIGRATION ═══
+// One-time: fold the old single quicknote.json into the notes collection under a "Sticky Notes"
+// notebook, so existing jotted text isn't lost when the sticky-note panel became multi-note.
+(function migrateQuickNoteToStickyNotes() {
+  if (!fs.existsSync(QUICKNOTE_FILE)) return;
+  const qn = readJSON(QUICKNOTE_FILE, { text: "", updated: null });
+  if (qn.text && qn.text.trim()) {
+    const data = readJSON(NOTES_FILE, { notes: [] });
+    if (!data.notes) data.notes = [];
+    const firstLine = qn.text.split("\n")[0].trim().slice(0, 60);
+    data.notes.push({
+      id: uid(),
+      title: firstLine || "Untitled",
+      notebook: "Sticky Notes",
+      section: "",
+      content: qn.text,
+      tags: [], links: [], goalRefs: [], projectRefs: [],
+      pinned: false,
+      created: today(),
+      updated: today(),
+    });
+    writeJSON(NOTES_FILE, data);
+  }
+  fs.unlinkSync(QUICKNOTE_FILE);
+})();
 
 // ═══ UNDO/REDO ═══
 const MAX_HISTORY = 30;
