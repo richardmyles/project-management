@@ -32,12 +32,22 @@ button,input,select,textarea{font-family:var(--fb)}button{cursor:pointer}
 .sr-tag{font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;color:#fff;margin-right:6px}
 .sr-type{font-size:9px;color:#999;margin-left:6px}
 
-/* Quick note (sticky note panel) */
-.qnote{position:fixed;left:16px;top:64px;width:230px;background:#FFF6CE;border:1px solid #E8D9A0;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.15);z-index:500;overflow:hidden}
-.qnote.min{width:auto}
+/* Sticky notes panel (OneNote-style: active note + stacked previous notes) */
+.qnote{position:relative;margin:12px 10px 0 10px;width:calc(100% - 20px);background:#FFF6CE;border:1px solid #E8D9A0;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.1);overflow:hidden}
+.qnote.min{width:calc(100% - 20px)}
 .qnote-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;cursor:pointer;font-size:11px;font-weight:700;color:#7a6520;background:#FCEEB0;user-select:none}
-.qnote-ta{display:block;width:100%;min-height:160px;max-height:340px;border:none;background:transparent;padding:8px 10px;font-size:12px;line-height:1.5;color:var(--dk);resize:vertical;outline:none;font-family:var(--fb)}
+.qnote-ta{display:block;width:100%;min-height:100px;max-height:220px;border:none;background:transparent;padding:8px 10px;font-size:12px;line-height:1.5;color:var(--dk);resize:vertical;outline:none;font-family:var(--fb);box-sizing:border-box}
 .qnote-ta::placeholder{color:#b3a15a}
+.qnote-toolbar{display:flex;justify-content:flex-end;gap:4px;padding:3px 8px 6px 8px}
+.qnote-btn{font-size:10px;background:none;border:none;color:#8a7326;cursor:pointer;padding:2px 6px;border-radius:3px}
+.qnote-btn:hover{background:#FCEEB0}
+.qnote-list{max-height:180px;overflow-y:auto;border-top:1px solid #E8D9A0}
+.qnote-item{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 10px;font-size:11px;color:#7a6520;cursor:pointer;border-bottom:1px solid #f2e6b8;background:#FFFDF3}
+.qnote-item:hover{background:#FCEEB0}
+.qnote-item-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qnote-item-date{font-size:9px;color:#b3a15a;flex-shrink:0}
+.qnote-item-del{color:#c99;font-weight:700;padding:0 4px;flex-shrink:0}
+.qnote-item-del:hover{color:#a33}
 
 /* Summary */
 .sum{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px}
@@ -235,7 +245,8 @@ let goalCats=[],goalCatMgrOpen=false;
 let scanState="idle",scanSuggestions=null,scanSelected={},scanNoteTitle="";
 let memoryContent="";
 let briefingData=null,briefingStatus={status:"idle"},briefingPoll=null,briefingElapsedTick=null;
-let quicknote={text:"",updated:null},qnMin=localStorage.getItem('qnMin')==='1';
+let qnMin=localStorage.getItem('qnMin')==='1',activeStickyId=localStorage.getItem('activeStickyId')||null;
+function getStickyNotes(){return notes.filter(n=>n.notebook==="Sticky Notes").sort((a,b)=>(b.updated||"").localeCompare(a.updated||""));}
 
 async function api(p,o={}){const r=await fetch(p,{headers:{"Content-Type":"application/json"},...o});if(o.raw)return r;return r.json();}
 
@@ -247,7 +258,7 @@ async function load(){
     goalCats=await api("/api/goals/categories/"+goalYear).catch(()=>[]);
     profile=await api("/api/profile").catch(()=>null);
     on1Notes=await api("/api/1on1").catch(()=>[]);
-    quicknote=await api("/api/quicknote").catch(()=>({text:"",updated:null}));
+    await ensureActiveSticky();
     if(profile?.memory)memoryContent=profile.memory;
     const bRef=await api("/api/briefing").catch(()=>({data:null,status:{status:"idle"}}));
     briefingData=bRef.data;briefingStatus=bRef.status||{status:"idle"};
@@ -314,19 +325,81 @@ function ds(){debounce('__state-save__',()=>save(),600);}
 // Re-render only when no input/textarea/select has focus — prevents wiping mid-type text
 // If focused, mark as pending — next explicit render() or save() will pick it up
 let _renderPending=false;
-function safeRender(){const ae=document.activeElement;if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT')){_renderPending=true;return;}render();}
+function safeRender(){const ae=document.activeElement;const isTypingField=ae&&((ae.tagName==='INPUT'&&!['checkbox','radio'].includes(ae.type))||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT');if(isTypingField){_renderPending=true;return;}render();}
 // Check for pending render after any blur (catches the deferred case)
 document.addEventListener('focusout',()=>{if(_renderPending){_renderPending=false;setTimeout(()=>{const ae=document.activeElement;if(!ae||!['INPUT','TEXTAREA','SELECT'].includes(ae.tagName))render();},50);}});
+// Full re-renders replace .app innerHTML, which resets any scrollable container's scrollTop —
+// use this instead of safeRender() when the triggering action lives inside a scrolled panel.
+function renderKeepScroll(selector){const el=document.querySelector(selector);const top=el?el.scrollTop:null;render();if(top!==null){const el2=document.querySelector(selector);if(el2)el2.scrollTop=top;}}
 
-// Quick note (sticky note panel) — rendered once, its textarea is never touched by full re-renders
+// Sticky notes panel — active note editor + stacked previous notes below, OneNote-style.
+// All sticky notes are regular notes under the "Sticky Notes" notebook, so they're also
+// browsable from the main Notes tab.
+async function ensureActiveSticky(){
+  const stickies=getStickyNotes();
+  if(activeStickyId&&!stickies.find(n=>n.id===activeStickyId))activeStickyId=null;
+  if(!activeStickyId){
+    if(stickies.length){
+      activeStickyId=stickies[0].id;
+    }else{
+      const res=await api('/api/notes',{method:'POST',body:JSON.stringify({title:'Untitled',notebook:'Sticky Notes',section:'',content:''})}).catch(()=>null);
+      if(res?.note){notes.push(res.note);activeStickyId=res.note.id;}
+    }
+    localStorage.setItem('activeStickyId',activeStickyId||'');
+  }
+}
 function rQuickNote(){
   if(qnMin)return '<div class="qnote min"><div class="qnote-h" onclick="qnToggleMin()"><span>📝</span><span>▸</span></div></div>';
-  return '<div class="qnote"><div class="qnote-h" onclick="qnToggleMin()"><span>📝 Quick Note</span><span>▾</span></div><textarea class="qnote-ta" placeholder="Jot something down..." oninput="qnInput(this.value)">'+esc(quicknote.text||"")+'</textarea></div>';
+  const stickies=getStickyNotes();
+  const active=stickies.find(n=>n.id===activeStickyId);
+  const others=stickies.filter(n=>n.id!==activeStickyId);
+  let h='<div class="qnote">';
+  h+='<div class="qnote-h" onclick="qnToggleMin()"><span>📝 Sticky Notes</span><span>▾</span></div>';
+  h+='<textarea class="qnote-ta" placeholder="Jot something down..." oninput="qnInput(this.value)">'+esc(active?.content||"")+'</textarea>';
+  h+='<div class="qnote-toolbar"><button class="qnote-btn" onclick="qnNewSticky()">+ New</button>'+(active?'<button class="qnote-btn" onclick="qnDeleteSticky(\''+active.id+'\')">Delete</button>':'')+'</div>';
+  if(others.length){
+    h+='<div class="qnote-list">';
+    others.forEach(n=>{
+      const preview=esc((n.content||"").split("\n")[0].trim().slice(0,34))||'(empty)';
+      h+='<div class="qnote-item" onclick="qnSelectSticky(\''+n.id+'\')"><span class="qnote-item-title">'+preview+'</span><span class="qnote-item-date">'+esc(n.updated||"")+'</span><span class="qnote-item-del" onclick="event.stopPropagation();qnDeleteSticky(\''+n.id+'\')">&times;</span></div>';
+    });
+    h+='</div>';
+  }
+  h+='</div>';
+  return h;
 }
 window.qnToggleMin=()=>{qnMin=!qnMin;localStorage.setItem('qnMin',qnMin?'1':'0');safeRender();};
 window.qnInput=v=>{
-  quicknote.text=v;
-  debounce('__quicknote-save__',async()=>{await api('/api/quicknote',{method:'PUT',body:JSON.stringify({text:quicknote.text})});},700);
+  const active=notes.find(n=>n.id===activeStickyId);
+  if(!active)return;
+  active.content=v;
+  const firstLine=v.split("\n")[0].trim();
+  active.title=firstLine?firstLine.slice(0,60):"Untitled";
+  debounce('__sticky-save-'+active.id+'__',async()=>{await api('/api/notes/'+active.id,{method:'PATCH',body:JSON.stringify({content:active.content,title:active.title})});},700);
+};
+window.qnSelectSticky=id=>{activeStickyId=id;localStorage.setItem('activeStickyId',id);renderKeepScroll('.notes-sidebar');};
+window.qnNewSticky=async()=>{
+  const res=await api('/api/notes',{method:'POST',body:JSON.stringify({title:'Untitled',notebook:'Sticky Notes',section:'',content:''})});
+  notes.unshift(res.note);
+  activeStickyId=res.note.id;
+  localStorage.setItem('activeStickyId',activeStickyId);
+  renderKeepScroll('.notes-sidebar');
+};
+window.qnDeleteSticky=async id=>{
+  if(!confirm('Delete this sticky note?'))return;
+  await api('/api/notes/'+id,{method:'DELETE'});
+  notes=notes.filter(n=>n.id!==id);
+  if(activeStickyId===id){
+    const remaining=getStickyNotes();
+    if(remaining.length){
+      activeStickyId=remaining[0].id;
+    }else{
+      const res=await api('/api/notes',{method:'POST',body:JSON.stringify({title:'Untitled',notebook:'Sticky Notes',section:'',content:''})});
+      notes.push(res.note);activeStickyId=res.note.id;
+    }
+    localStorage.setItem('activeStickyId',activeStickyId);
+  }
+  renderKeepScroll('.notes-sidebar');
 };
 window.togMs=(pid,msId)=>{const k=pid+"-"+msId;expMs[k]=!expMs[k];render();};
 window.msEdit=(pid,i,f,v)=>{fp(pid).milestones[i][f]=v;ds();};
@@ -665,7 +738,7 @@ function render(){
   else if(tab==="journal") h+=rJournal(ap);
   else if(tab==="reports") h+=rReports(ap);
   else if(tab==="archive") h+=rArchive();
-  else if(tab==="notes") h+=rQuickNote()+rNotes();
+  else if(tab==="notes") h+=rNotes();
   else if(tab==="profile") h+=rProfile();
   else if(tab==="1on1") h+=r1on1();
 
@@ -2229,6 +2302,7 @@ function rNotes(){
   h+='<button class="btn sm ol" style="font-size:10px;width:100%;color:var(--green);border-color:var(--green)" onclick="noteExportMode=!noteExportMode;noteExportSel=new Set();render()">&#8659; Export .docx</button>';
   h+='<button class="btn sm ol" style="font-size:10px;width:100%;color:#888;border-color:#ccc" onclick="exportAllNotes()">&#8659; Export All Notes (.zip)</button>';
   h+='</div>';
+  h+=rQuickNote();
   h+='</div>';
 
   // Main area
