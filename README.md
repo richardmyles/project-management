@@ -12,7 +12,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 | File | When to use |
 |------|-------------|
-| `My Projects Setup 1.0.10.exe` | Standard installer — adds to Start Menu and desktop |
+| `My Projects Setup 1.0.11.exe` | Standard installer — adds to Start Menu and desktop |
 | `MyProjects-portable.exe` | No install needed — run from anywhere, including a USB drive |
 
 ---
@@ -21,7 +21,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 ### Installer (recommended)
 
-1. Download `My Projects Setup 1.0.10.exe`
+1. Download `My Projects Setup 1.0.11.exe`
 2. Run it and follow the prompts
 3. Launch **My Projects** from the Start Menu or desktop shortcut
 
@@ -87,11 +87,11 @@ See `.env.example` in the repository for a full template. `.env` is gitignored �
 
 **Dashboard** — live summary of all active projects, overdue milestones, open tasks, and a daily AI-generated briefing
 
-**Projects** — create and manage projects with milestones, risks, dependencies, links, and goal references. Each milestone has a status (complete / in-progress / at-risk / blocked / not-started), owner, notes, and sub-bullets.
+**Projects** — create and manage projects with milestones, risks, dependencies, links, and goal references. Each milestone has a status (complete / in-progress / at-risk / blocked / not-started), owner, notes, and sub-bullets. Milestones can be drag-reordered or auto-sorted by due date, and completed milestones can be hidden per project via a toggle.
 
 **Tasks** — standalone task list with tags, project links, owners, and completion tracking; task text, notes, and owner are directly editable inline
 
-**Notes** — freeform notes, separate from the project journal
+**Notes** — freeform notes, separate from the project journal, with a persistent quick-notes sticky panel and export options (single note, a folder as `.zip`, or all notes as `.zip`)
 
 **Profile** — your personal profile, generated and refreshed with AI assistance
 
@@ -103,9 +103,11 @@ See `.env.example` in the repository for a full template. `.env` is gitignored �
 
 **Journal** — decision log, lessons learned, risk notes, meeting notes, and actions — tagged by project and type
 
-**Reports** — generate progress reports at four detail levels (summary / check-in / full / comprehensive) and export as Word (`.docx`) or markdown, with optional AI-assisted generation
+**Reports** — generate progress reports at four detail levels (summary / check-in / full / comprehensive) and export as Word (`.docx`), markdown, or a comprehensive Excel (`.xlsx`) workbook covering all projects, tasks, goals, and milestones, with optional AI-assisted generation
 
-**1:1s** — track one-on-one meeting notes
+**1:1s** — track one-on-one meeting notes pulled from your Second Brain vault, with an in-app "how this works" guide and the ability to mark open action items done or remove them
+
+**Settings** — personalize your name, team, org, and accent colour; optionally configure a Second Brain vault path (for 1:1 notes sync) and a OneNote export folder
 
 **Archive** — closed project snapshots with auto-generated closure reports
 
@@ -146,7 +148,9 @@ data/
 ├── goals/               # Annual goal files
 ├── reports/             # Generated reports (.md and .docx)
 ├── archive/             # Closed project snapshots
-├── notes.json           # Standalone notes
+├── notes.json           # Standalone notes (metadata)
+├── notes-html/          # Rich note content, one file per note
+├── notes-exports/       # Generated note export .zip/.html/.md files
 ├── profile.json         # AI-generated profile
 ├── briefing/            # Daily AI briefing data
 └── .history/            # Undo/redo snapshots

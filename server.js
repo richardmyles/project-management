@@ -5,6 +5,7 @@ const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 3201;
+const APP_VERSION = require("./package.json").version;
 
 const ROOT = process.env.APP_DATA_PATH || __dirname;
 const DATA = path.join(ROOT, "data");
@@ -24,10 +25,10 @@ const RESOLVED_FILE = path.join(BRIEFING_DIR, "resolved.json");
 const NOTES_FILE = path.join(DATA, "notes.json");
 const PROFILE_FILE = path.join(DATA, "profile.json");
 const NOTES_HTML_DIR = path.join(DATA, "notes-html");
-const OBSIDIAN_VAULT = process.env.OBSIDIAN_VAULT || "";
-const OBSIDIAN_PROFILE_FILE = OBSIDIAN_VAULT ? path.join(OBSIDIAN_VAULT, "_claude", "artifacts", "profile.md") : null;
+const NOTES_EXPORT_DIR = path.join(DATA, "notes-exports");
+const QUICKNOTE_FILE = path.join(DATA, "quicknote.json");
 
-[DATA, GOALS_DIR, ARCHIVE_DIR, REPORTS_DIR, HISTORY_DIR, DRAFTS_DIR, UPLOADS_DIR, BRIEFING_DIR, NOTES_HTML_DIR].forEach(d => {
+[DATA, GOALS_DIR, ARCHIVE_DIR, REPORTS_DIR, HISTORY_DIR, DRAFTS_DIR, UPLOADS_DIR, BRIEFING_DIR, NOTES_HTML_DIR, NOTES_EXPORT_DIR].forEach(d => {
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
 });
 
@@ -55,17 +56,45 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 function today() { return new Date().toISOString().split("T")[0]; }
 let _configCache = null;
 function getConfig() {
-  if (!_configCache) _configCache = readJSON(CONFIG_FILE, { name: "My", team: "", org: "", primaryColor: "#0F3A85", setupComplete: false });
+  if (!_configCache) _configCache = readJSON(CONFIG_FILE, { name: "My", team: "", org: "", primaryColor: "#0F3A85", secondBrainPath: "", oneNoteExportPath: "", setupComplete: false });
   return _configCache;
+}
+function getVaultPath() {
+  const cfg = getConfig();
+  const configured = (cfg.secondBrainPath || "").trim();
+  return configured || process.env.OBSIDIAN_VAULT || "";
+}
+function getVaultProfileFile() {
+  const vault = getVaultPath();
+  return vault ? path.join(vault, "_claude", "artifacts", "profile.md") : null;
+}
+// Folder where the user periodically drops OneNote page exports (.mht/.zip/.docx) for later
+// scanning/import. NOTE: no watcher/importer reads this yet — this is settings-only scaffolding
+// for a future "scan folder" import feature (see project notes on OneNote sync options).
+function getOneNoteExportPath() {
+  const cfg = getConfig();
+  return (cfg.oneNoteExportPath || "").trim();
 }
 
 // ═══ CONFIG ═══
-app.get("/api/config", (req, res) => { res.json(getConfig()); });
+app.get("/api/config", (req, res) => { res.json({ ...getConfig(), version: APP_VERSION, effectiveSecondBrainPath: getVaultPath(), effectiveOneNoteExportPath: getOneNoteExportPath() }); });
 app.put("/api/config", (req, res) => {
   const updated = { ...getConfig(), ...req.body, setupComplete: true };
   writeJSON(CONFIG_FILE, updated);
   _configCache = updated;
-  res.json({ ok: true, config: updated });
+  const vaultPathExists = updated.secondBrainPath ? fs.existsSync(updated.secondBrainPath) : true;
+  const oneNoteExportPathExists = updated.oneNoteExportPath ? fs.existsSync(updated.oneNoteExportPath) : true;
+  res.json({ ok: true, config: updated, vaultPathExists, oneNoteExportPathExists });
+});
+
+// ═══ QUICK NOTE ═══
+app.get("/api/quicknote", (req, res) => {
+  res.json(readJSON(QUICKNOTE_FILE, { text: "", updated: null }));
+});
+app.put("/api/quicknote", (req, res) => {
+  const updated = { text: req.body.text || "", updated: new Date().toISOString() };
+  writeJSON(QUICKNOTE_FILE, updated);
+  res.json({ ok: true, quicknote: updated });
 });
 
 // ═══ UNDO/REDO ═══
@@ -600,14 +629,14 @@ app.post("/api/goals/export-docx", async (req, res) => {
 
 // ═══ REPORTS ═══
 app.get("/api/reports", (req, res) => {
-  const files = fs.readdirSync(REPORTS_DIR).filter(f => f.endsWith(".md") || f.endsWith(".docx")).sort().reverse();
-  res.json(files.map(f => ({ filename: f, date: f.split("_")[0], type: f.replace(/^\d{4}-\d{2}-\d{2}_/, "").replace(/\.(md|docx)$/, ""), format: f.endsWith(".docx") ? "docx" : "md" })));
+  const files = fs.readdirSync(REPORTS_DIR).filter(f => f.endsWith(".md") || f.endsWith(".docx") || f.endsWith(".xlsx")).sort().reverse();
+  res.json(files.map(f => ({ filename: f, date: f.split("_")[0], type: f.replace(/^\d{4}-\d{2}-\d{2}_/, "").replace(/\.(md|docx|xlsx)$/, ""), format: f.endsWith(".docx") ? "docx" : f.endsWith(".xlsx") ? "xlsx" : "md" })));
 });
 app.get("/api/reports/:filename", (req, res) => {
   const file = path.resolve(REPORTS_DIR, req.params.filename);
   if (!file.startsWith(REPORTS_DIR + path.sep) && file !== REPORTS_DIR) return res.status(400).json({ error: "Invalid filename" });
   if (!fs.existsSync(file)) return res.status(404).json({ error: "Not found" });
-  if (req.params.filename.endsWith(".docx")) res.download(file);
+  if (req.params.filename.endsWith(".docx") || req.params.filename.endsWith(".xlsx")) res.download(file);
   else res.type("text/markdown").send(fs.readFileSync(file, "utf8"));
 });
 
@@ -875,6 +904,103 @@ app.post("/api/reports/export-docx", async (req, res) => {
     fs.writeFileSync(path.join(REPORTS_DIR, filename), buffer);
     res.json({ ok: true, filename, downloadUrl: "/api/reports/" + filename });
   } catch (e) { console.error("DOCX error:", e); res.status(500).json({ error: e.message }); }
+});
+
+// ═══ XLSX COMPREHENSIVE EXPORT ═══
+app.post("/api/reports/export-xlsx", (req, res) => {
+  try {
+    const xlsx = require("xlsx");
+    const { projectIds, dateFrom = null, dateTo = null } = req.body;
+    const state = readJSON(STATE_FILE, { projects: [], journal: [], tasks: [] });
+    const yr = new Date().getFullYear();
+    const goalsData = readJSON(path.join(GOALS_DIR, yr + "_goals.json"), null);
+    const selected = projectIds && projectIds.length
+      ? state.projects.filter(p => projectIds.includes(p.id))
+      : state.projects.filter(p => !p.archived);
+    const selectedIds = new Set(selected.map(p => p.id));
+
+    const inRange = (dateStr) => {
+      if (!dateStr) return true;
+      if (dateFrom && dateStr < dateFrom) return false;
+      if (dateTo && dateStr > dateTo) return false;
+      return true;
+    };
+
+    const wb = xlsx.utils.book_new();
+    const addSheet = (name, rows) => {
+      const ws = xlsx.utils.json_to_sheet(rows.length ? rows : [{}]);
+      xlsx.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+    };
+
+    addSheet("Summary", selected.map(p => {
+      const total = p.milestones.length;
+      const comp = p.milestones.filter(m => m.status === "complete").length;
+      return {
+        ID: p.id, ShortName: p.shortName, Name: p.name, Owner: p.owner || "", Sponsor: p.sponsor || "",
+        TargetDate: p.targetDate || "", Health: getHealth(p),
+        MilestonesComplete: comp, MilestonesTotal: total,
+        PercentComplete: total ? Math.round((comp / total) * 100) : 0,
+      };
+    }));
+
+    const msRows = [];
+    selected.forEach(p => p.milestones.filter(m => inRange(m.target)).forEach(m => msRows.push({
+      ProjectShortName: p.shortName, ProjectName: p.name, Milestone: m.name, Target: m.target || "",
+      Status: m.status, Owner: m.owner || "", Notes: m.notes || "",
+    })));
+    addSheet("Milestones", msRows);
+
+    const taskRows = (state.tasks || []).filter(t => inRange(t.created) || inRange(t.completed))
+      .filter(t => !t.project || selectedIds.has(t.project))
+      .map(t => {
+        const proj = state.projects.find(p => p.id === t.project);
+        return {
+          Project: proj ? proj.shortName : "", Task: t.text, Status: t.status,
+          Created: t.created || "", Completed: t.completed || "", Owner: t.owner || "",
+          Tags: (t.tags || []).join(", "), Notes: t.notes || "",
+        };
+      });
+    addSheet("Tasks", taskRows);
+
+    const journalRows = state.journal.filter(j => inRange(j.date))
+      .filter(j => j.project === "all" || !j.project || selectedIds.has(j.project))
+      .map(j => {
+        const proj = state.projects.find(p => p.id === j.project);
+        return { Date: j.date, Project: proj ? proj.shortName : "All", Type: j.type || "", Text: j.text };
+      });
+    addSheet("Journal", journalRows);
+
+    const riskRows = [];
+    selected.forEach(p => (p.risks || []).forEach(r => riskRows.push({
+      Project: p.shortName, Risk: r.text, Severity: r.severity,
+    })));
+    addSheet("Risks", riskRows);
+
+    const depRows = [];
+    selected.forEach(p => (p.dependencies || []).forEach(d => depRows.push({
+      Project: p.shortName, Dependency: d,
+    })));
+    addSheet("Dependencies", depRows);
+
+    const linkRows = [];
+    selected.forEach(p => (p.links || []).forEach(l => linkRows.push({
+      Project: p.shortName, Label: l.label, URL: l.url,
+    })));
+    addSheet("Links", linkRows);
+
+    if (goalsData && goalsData.goals && goalsData.goals.length) {
+      addSheet("Goals", goalsData.goals.map(g => ({
+        Category: g.category, Goal: g.text, Status: g.status,
+        LinkedProjects: (g.linkedProjects || []).map(id => state.projects.find(p => p.id === id)?.shortName || id).join(", "),
+        Q1Notes: g.q1Notes || "", Q2Notes: g.q2Notes || "", Q3Notes: g.q3Notes || "", Q4Notes: g.q4Notes || "",
+      })));
+    }
+
+    const buffer = xlsx.write(wb, { type: "buffer", bookType: "xlsx" });
+    const filename = today() + "_xlsx-export.xlsx";
+    fs.writeFileSync(path.join(REPORTS_DIR, filename), buffer);
+    res.json({ ok: true, filename, downloadUrl: "/api/reports/" + filename });
+  } catch (e) { console.error("XLSX error:", e); res.status(500).json({ error: e.message }); }
 });
 
 // ═══ AI REPORT → DOCX ═══
@@ -1532,15 +1658,16 @@ function profileToMarkdown(profile) {
 }
 
 app.post("/api/obsidian/push", (req, res) => {
-  if (!OBSIDIAN_PROFILE_FILE) return res.status(400).json({ error: "OBSIDIAN_VAULT not configured" });
+  const obsidianProfileFile = getVaultProfileFile();
+  if (!obsidianProfileFile) return res.status(400).json({ error: "Second Brain location not configured. Set it in Settings." });
   try {
     const profile = readJSON(PROFILE_FILE, null);
     if (!profile) return res.status(404).json({ error: "No profile to push" });
     const md = profileToMarkdown(profile);
-    const dir = path.dirname(OBSIDIAN_PROFILE_FILE);
+    const dir = path.dirname(obsidianProfileFile);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(OBSIDIAN_PROFILE_FILE, md, "utf8");
-    res.json({ ok: true, path: OBSIDIAN_PROFILE_FILE });
+    fs.writeFileSync(obsidianProfileFile, md, "utf8");
+    res.json({ ok: true, path: obsidianProfileFile });
   } catch(e) {
     console.error("Obsidian push error:", e.message);
     res.status(500).json({ error: e.message });
@@ -1548,20 +1675,22 @@ app.post("/api/obsidian/push", (req, res) => {
 });
 
 app.post("/api/obsidian/pull", async (req, res) => {
-  if (!OBSIDIAN_PROFILE_FILE) return res.status(400).json({ error: "OBSIDIAN_VAULT not configured" });
+  const obsidianProfileFile = getVaultProfileFile();
+  const obsidianVault = getVaultPath();
+  if (!obsidianProfileFile) return res.status(400).json({ error: "Second Brain location not configured. Set it in Settings." });
   try {
     const sections = [];
     // Read existing profile.md from vault (if it exists)
-    if (fs.existsSync(OBSIDIAN_PROFILE_FILE)) {
-      sections.push("=== VAULT: _claude/artifacts/profile.md ===\n" + fs.readFileSync(OBSIDIAN_PROFILE_FILE, "utf8"));
+    if (fs.existsSync(obsidianProfileFile)) {
+      sections.push("=== VAULT: _claude/artifacts/profile.md ===\n" + fs.readFileSync(obsidianProfileFile, "utf8"));
     }
     // Read team.md for relationship info
-    const teamFile = path.join(OBSIDIAN_VAULT, "04-people", "team.md");
+    const teamFile = path.join(obsidianVault, "04-people", "team.md");
     if (fs.existsSync(teamFile)) {
       sections.push("=== VAULT: 04-people/team.md ===\n" + fs.readFileSync(teamFile, "utf8"));
     }
     // Read any .md files in 01-lp1-work (top-level only)
-    const lpWorkDir = path.join(OBSIDIAN_VAULT, "01-lp1-work");
+    const lpWorkDir = path.join(obsidianVault, "01-lp1-work");
     if (fs.existsSync(lpWorkDir)) {
       fs.readdirSync(lpWorkDir).filter(f => f.endsWith(".md")).slice(0, 5).forEach(f => {
         const content = fs.readFileSync(path.join(lpWorkDir, f), "utf8");
@@ -1913,8 +2042,9 @@ app.delete("/api/notes/:id", (req, res) => {
 });
 
 // ═══ 1:1 VAULT NOTES ═══
+function get1on1Dir() { return path.join(getVaultPath(), "01-lp1-work", "1on1"); }
 app.get("/api/1on1", (req, res) => {
-  const on1Dir = path.join(OBSIDIAN_VAULT, "01-lp1-work", "1on1");
+  const on1Dir = get1on1Dir();
   if (!fs.existsSync(on1Dir)) return res.json([]);
   const files = fs.readdirSync(on1Dir).filter(f => f.endsWith(".md") && f !== "README.md");
   const notes = [];
@@ -1955,6 +2085,37 @@ app.get("/api/1on1", (req, res) => {
     .map(([person, meetings]) => ({ person, meetings, lastDate: meetings[0].date }))
     .sort((a, b) => b.lastDate.localeCompare(a.lastDate));
   res.json(result);
+});
+app.patch("/api/1on1/:file/action", (req, res) => {
+  const on1Dir = get1on1Dir();
+  const fileParam = req.params.file || "";
+  if (!fileParam.endsWith(".md")) return res.status(400).json({ error: "Invalid file" });
+  const filePath = path.resolve(on1Dir, fileParam);
+  if (!filePath.startsWith(path.resolve(on1Dir) + path.sep)) return res.status(400).json({ error: "Invalid file" });
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Not found" });
+  const { action, text } = req.body;
+  if ((action !== "close" && action !== "delete") || !text || !text.trim()) return res.status(400).json({ error: "Invalid action" });
+  const raw = fs.readFileSync(filePath, "utf8");
+  const eol = raw.includes("\r\n") ? "\r\n" : "\n";
+  const lines = raw.split(/\r?\n/);
+  let inActions = false, matched = false;
+  const out = [];
+  for (const line of lines) {
+    if (/^## Action Items/.test(line)) { inActions = true; out.push(line); continue; }
+    if (/^## /.test(line)) inActions = false;
+    if (inActions && !matched) {
+      const om = line.match(/^- \[ \] (.+)/);
+      if (om && om[1].trim() === text.trim()) {
+        matched = true;
+        if (action === "close") out.push(line.replace("- [ ] ", "- [x] "));
+        continue; // delete: drop the line entirely
+      }
+    }
+    out.push(line);
+  }
+  if (!matched) return res.status(404).json({ error: "Action item not found" });
+  fs.writeFileSync(filePath, out.join(eol), "utf8");
+  res.json({ ok: true });
 });
 
 app.post("/api/notes/export-docx", async (req, res) => {
@@ -2197,6 +2358,107 @@ app.post("/api/notes/export-docx", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+// ═══ NOTES EXPORT — single (.html/.md) and .zip (folder / all) ═══
+function escNoteHtml(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+function sanitizeExportFilename(name) {
+  const cleaned = String(name || "Untitled").replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim();
+  return cleaned || "Untitled";
+}
+function dedupeExportFilename(used, base, ext) {
+  let name = base, n = 2;
+  while (used.has((name + ext).toLowerCase())) { name = base + "-" + n; n++; }
+  used.add((name + ext).toLowerCase());
+  return name + ext;
+}
+// Build the exportable {ext, content} for a single note — rich HTML if present, else plain markdown/text
+function noteExportFile(note) {
+  const htmlFile = path.join(NOTES_HTML_DIR, note.id + ".html");
+  const safeTitle = escNoteHtml(note.title || "Untitled");
+  if (fs.existsSync(htmlFile)) {
+    const body = fs.readFileSync(htmlFile, "utf8");
+    const loc = [note.notebook, note.section].filter(Boolean).join(" › ");
+    const meta = [loc, note.updated || note.created || ""].filter(Boolean).join(" — ");
+    const html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>" + safeTitle + "</title>"
+      + "<style>body{font-family:Arial,Helvetica,sans-serif;color:#212121;max-width:800px;margin:40px auto;padding:0 20px;line-height:1.6}"
+      + "h1{font-size:22px;border-bottom:2px solid #0F3A85;padding-bottom:8px;margin-bottom:4px}"
+      + ".meta{color:#777;font-size:12px;margin-bottom:24px}"
+      + "table{border-collapse:collapse;width:100%;margin:10px 0}td,th{border:1px solid #ddd;padding:6px}</style></head><body>"
+      + "<h1>" + safeTitle + "</h1>" + (meta ? "<div class=\"meta\">" + escNoteHtml(meta) + "</div>" : "")
+      + body + "</body></html>";
+    return { ext: ".html", content: html };
+  }
+  const lines = ["# " + (note.title || "Untitled")];
+  const loc = [note.notebook, note.section].filter(Boolean).join(" › ");
+  if (loc) lines.push("_" + loc + "_");
+  if (note.updated || note.created) lines.push("_" + (note.updated || note.created) + "_");
+  lines.push("", note.content || "");
+  return { ext: ".md", content: lines.join("\n") };
+}
+function buildNotesZip(selectedNotes, prefix) {
+  const AdmZip = require("adm-zip");
+  const zip = new AdmZip();
+  const used = new Set();
+  selectedNotes.forEach(note => {
+    const { ext, content } = noteExportFile(note);
+    const filename = dedupeExportFilename(used, sanitizeExportFilename(note.title), ext);
+    zip.addFile(filename, Buffer.from(content, "utf8"));
+  });
+  const filename = prefix + "-" + uid() + ".zip";
+  fs.writeFileSync(path.join(NOTES_EXPORT_DIR, filename), zip.toBuffer());
+  return filename;
+}
+// Single-note export — no zip needed, direct file download
+app.get("/api/notes/:id/export", (req, res) => {
+  try {
+    const data = readJSON(NOTES_FILE, { notes: [] });
+    const note = (data.notes || []).find(n => n.id === req.params.id);
+    if (!note) return res.status(404).json({ error: "Not found" });
+    const { ext, content } = noteExportFile(note);
+    const filename = sanitizeExportFilename(note.title) + ext;
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.type(ext === ".html" ? "text/html" : "text/markdown");
+    res.send(content);
+  } catch (e) {
+    console.error("note export error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+// Export a specific set of notes (e.g. one notebook/section) as a .zip
+app.post("/api/notes/export-zip", (req, res) => {
+  try {
+    const { noteIds } = req.body;
+    if (!noteIds || !noteIds.length) return res.status(400).json({ error: "noteIds required" });
+    const data = readJSON(NOTES_FILE, { notes: [] });
+    const selected = noteIds.map(id => (data.notes || []).find(n => n.id === id)).filter(Boolean);
+    if (!selected.length) return res.status(404).json({ error: "No matching notes" });
+    const filename = buildNotesZip(selected, "notes-export");
+    res.json({ ok: true, filename, downloadUrl: "/api/notes/export-zip-file/" + filename });
+  } catch (e) {
+    console.error("notes export-zip error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+// Export every note as a .zip
+app.post("/api/notes/export-zip-all", (req, res) => {
+  try {
+    const data = readJSON(NOTES_FILE, { notes: [] });
+    const selected = data.notes || [];
+    if (!selected.length) return res.status(404).json({ error: "No notes to export" });
+    const filename = buildNotesZip(selected, "notes-export-all");
+    res.json({ ok: true, filename, downloadUrl: "/api/notes/export-zip-file/" + filename });
+  } catch (e) {
+    console.error("notes export-zip-all error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+app.get("/api/notes/export-zip-file/:filename", (req, res) => {
+  const file = path.resolve(NOTES_EXPORT_DIR, req.params.filename);
+  if (!file.startsWith(NOTES_EXPORT_DIR + path.sep) && file !== NOTES_EXPORT_DIR) return res.status(400).json({ error: "Invalid filename" });
+  if (!fs.existsSync(file)) return res.status(404).json({ error: "Not found" });
+  res.download(file);
+});
+
 function decodeQP(str) {
   str = str.replace(/=\r?\n/g, "");
   const bytes = [];

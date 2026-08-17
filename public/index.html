@@ -32,6 +32,13 @@ button,input,select,textarea{font-family:var(--fb)}button{cursor:pointer}
 .sr-tag{font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;color:#fff;margin-right:6px}
 .sr-type{font-size:9px;color:#999;margin-left:6px}
 
+/* Quick note (sticky note panel) */
+.qnote{position:fixed;left:16px;top:64px;width:230px;background:#FFF6CE;border:1px solid #E8D9A0;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.15);z-index:500;overflow:hidden}
+.qnote.min{width:auto}
+.qnote-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;cursor:pointer;font-size:11px;font-weight:700;color:#7a6520;background:#FCEEB0;user-select:none}
+.qnote-ta{display:block;width:100%;min-height:160px;max-height:340px;border:none;background:transparent;padding:8px 10px;font-size:12px;line-height:1.5;color:var(--dk);resize:vertical;outline:none;font-family:var(--fb)}
+.qnote-ta::placeholder{color:#b3a15a}
+
 /* Summary */
 .sum{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px}
 .sc{background:#fff;border-radius:8px;padding:11px 14px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
@@ -78,7 +85,7 @@ button,input,select,textarea{font-family:var(--fb)}button{cursor:pointer}
 .proj-link:hover{border-color:var(--blue);background:var(--ice)}
 .ms-mv{border:none;background:none;color:#ccc;font-size:10px;cursor:pointer;padding:1px 3px;border-radius:2px;line-height:1}
 .ms-mv:hover{color:var(--blue);background:#f0f0f0}
-.ie{background:transparent;border:1px solid transparent;border-radius:3px;padding:2px 4px;font-size:12px;color:var(--dk);width:100%}
+.ie{background:transparent;border:1px solid transparent;border-radius:3px;padding:2px 4px;font-size:12px;color:var(--dk);width:100%;overflow-wrap:break-word;word-break:break-word}
 .ie:hover{border-color:#ddd}.ie:focus{border-color:var(--blue);outline:none;background:#fff}
 .ie-date{font-size:11px;color:#777;width:100%;background:transparent;border:1px solid transparent;border-radius:3px;padding:2px 3px}
 .ie-date:hover{border-color:#ddd}.ie-date:focus{border-color:var(--blue);outline:none;background:#fff}
@@ -213,10 +220,11 @@ const JM=Object.fromEntries(JT.map(j=>[j.v,j]));
 const PC=["#0F3A85","#144B2D","#7B2D8E","#F58E7D","#511207","#0A6E5C","#C4571A"];
 const SV={high:"#E1251B",medium:"#FFC709",low:"#0F3A85"};
 
-let state={projects:[],journal:[]},cfg={name:"",team:"",org:"",primaryColor:"#0F3A85",setupComplete:false};
+let state={projects:[],journal:[]},cfg={name:"",team:"",org:"",primaryColor:"#0F3A85",secondBrainPath:"",effectiveSecondBrainPath:"",oneNoteExportPath:"",effectiveOneNoteExportPath:"",version:"",setupComplete:false};
 let goals={},goalMap={mappings:[]},reports=[],archive=[],hist={undo:0,redo:0};
 let tab="dashboard",exp={},jf="all",expMs={},expTk={},expGoals={};
 let npGoalRefs=[],taskFilter="all",goalYear=new Date().getFullYear(),reportQuarters=new Set(),pgPickerOpen=null,goalQSel={};
+let msDrag=null;
 let notes=[],nFilter={nb:null,sec:null},noteSearch="",noteNbOpen={},noteView="notes",noteExportMode=false,noteExportSel=new Set();
 let noteNbOrder=JSON.parse(localStorage.getItem('noteNbOrder')||'[]'),noteSecOrder=JSON.parse(localStorage.getItem('noteSecOrder')||'{}');
 let profile=null,profileEditMode=false;
@@ -227,6 +235,7 @@ let goalCats=[],goalCatMgrOpen=false;
 let scanState="idle",scanSuggestions=null,scanSelected={},scanNoteTitle="";
 let memoryContent="";
 let briefingData=null,briefingStatus={status:"idle"},briefingPoll=null,briefingElapsedTick=null;
+let quicknote={text:"",updated:null},qnMin=localStorage.getItem('qnMin')==='1';
 
 async function api(p,o={}){const r=await fetch(p,{headers:{"Content-Type":"application/json"},...o});if(o.raw)return r;return r.json();}
 
@@ -238,6 +247,7 @@ async function load(){
     goalCats=await api("/api/goals/categories/"+goalYear).catch(()=>[]);
     profile=await api("/api/profile").catch(()=>null);
     on1Notes=await api("/api/1on1").catch(()=>[]);
+    quicknote=await api("/api/quicknote").catch(()=>({text:"",updated:null}));
     if(profile?.memory)memoryContent=profile.memory;
     const bRef=await api("/api/briefing").catch(()=>({data:null,status:{status:"idle"}}));
     briefingData=bRef.data;briefingStatus=bRef.status||{status:"idle"};
@@ -254,7 +264,7 @@ async function load(){
 }
 
 function showSetup(){document.getElementById("app").innerHTML='<div class="setup-overlay"><div class="setup-card"><div style="font-family:var(--fh);font-size:22px;font-weight:700;color:var(--primary);margin-bottom:8px">Welcome to My Projects</div><div style="font-size:13px;color:#888;margin-bottom:24px">Personalize your project tracker.</div><div class="mf"><label class="ml">Your Name</label><input class="mi" id="su-name" placeholder="e.g. Jane Smith"></div><div class="mf"><label class="ml">Team / Group</label><input class="mi" id="su-team" placeholder="e.g. Manufacturing Sciences"></div><div class="mf"><label class="ml">Organization</label><input class="mi" id="su-org" placeholder="e.g. Acme Corp"></div><div class="mf"><label class="ml">Accent Color</label><div style="display:flex;align-items:center;gap:8px"><input type="color" id="su-color" value="#0F3A85" oninput="document.getElementById(\'su-color-lbl\').textContent=this.value;document.documentElement.style.setProperty(\'--primary\',this.value)" style="width:40px;height:32px;border:1px solid #ddd;border-radius:4px;cursor:pointer"><span id="su-color-lbl" style="font-size:12px;color:#888">#0F3A85</span></div></div><button class="btn" style="background:var(--primary);width:100%;padding:10px;margin-top:12px;border-radius:6px" onclick="saveSetup()">Get Started &#8594;</button></div></div>';}
-window.saveSetup=async()=>{const name=document.getElementById("su-name").value.trim();if(!name)return alert("Please enter your name.");const team=document.getElementById("su-team").value.trim();const org=document.getElementById("su-org").value.trim();const color=document.getElementById("su-color").value;await api("/api/config",{method:"PUT",body:JSON.stringify({name,team,org,primaryColor:color,setupComplete:true})});cfg={name,team,org,primaryColor:color,setupComplete:true};document.documentElement.style.setProperty("--primary",color);document.title=name+"'s Projects";render();};
+window.saveSetup=async()=>{const name=document.getElementById("su-name").value.trim();if(!name)return alert("Please enter your name.");const team=document.getElementById("su-team").value.trim();const org=document.getElementById("su-org").value.trim();const color=document.getElementById("su-color").value;await api("/api/config",{method:"PUT",body:JSON.stringify({name,team,org,primaryColor:color,setupComplete:true})});cfg={...cfg,name,team,org,primaryColor:color,setupComplete:true};document.documentElement.style.setProperty("--primary",color);document.title=name+"'s Projects";render();};
 
 async function save(){state.lastUpdated=new Date().toISOString();await api("/api/state",{method:"PUT",body:JSON.stringify(state)});hist=await api("/api/history/count");toast("Saved");safeRender();}
 function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1500);}
@@ -307,9 +317,24 @@ let _renderPending=false;
 function safeRender(){const ae=document.activeElement;if(ae&&(ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT')){_renderPending=true;return;}render();}
 // Check for pending render after any blur (catches the deferred case)
 document.addEventListener('focusout',()=>{if(_renderPending){_renderPending=false;setTimeout(()=>{const ae=document.activeElement;if(!ae||!['INPUT','TEXTAREA','SELECT'].includes(ae.tagName))render();},50);}});
+
+// Quick note (sticky note panel) — rendered once, its textarea is never touched by full re-renders
+function rQuickNote(){
+  if(qnMin)return '<div class="qnote min"><div class="qnote-h" onclick="qnToggleMin()"><span>📝</span><span>▸</span></div></div>';
+  return '<div class="qnote"><div class="qnote-h" onclick="qnToggleMin()"><span>📝 Quick Note</span><span>▾</span></div><textarea class="qnote-ta" placeholder="Jot something down..." oninput="qnInput(this.value)">'+esc(quicknote.text||"")+'</textarea></div>';
+}
+window.qnToggleMin=()=>{qnMin=!qnMin;localStorage.setItem('qnMin',qnMin?'1':'0');safeRender();};
+window.qnInput=v=>{
+  quicknote.text=v;
+  debounce('__quicknote-save__',async()=>{await api('/api/quicknote',{method:'PUT',body:JSON.stringify({text:quicknote.text})});},700);
+};
 window.togMs=(pid,msId)=>{const k=pid+"-"+msId;expMs[k]=!expMs[k];render();};
 window.msEdit=(pid,i,f,v)=>{fp(pid).milestones[i][f]=v;ds();};
 window.msMove=(pid,i,dir)=>{const ms=fp(pid).milestones;const j=i+dir;if(j<0||j>=ms.length)return;[ms[i],ms[j]]=[ms[j],ms[i]];save();};
+window.msDragStart=(e,pid,i)=>{msDrag={pid,i};e.dataTransfer.effectAllowed="move";};
+window.msDrop=(e,pid,i)=>{e.preventDefault();if(!msDrag||msDrag.pid!==pid){msDrag=null;return;}const ms=fp(pid).milestones,from=msDrag.i;msDrag=null;if(from===i)return;const[it]=ms.splice(from,1);ms.splice(from<i?i-1:i,0,it);save();};
+window.msSort=pid=>{const ms=fp(pid).milestones;ms.sort((a,b)=>{if(!a.target&&!b.target)return 0;if(!a.target)return 1;if(!b.target)return-1;return a.target<b.target?-1:a.target>b.target?1:0;});save();};
+window.toggleHideCompletedMs=pid=>{const p=fp(pid);p.hideCompletedMs=!p.hideCompletedMs;save();};
 window.setMs=(pid,i,v)=>{fp(pid).milestones[i].status=v;save();};
 window.rmMs=(pid,i)=>{if(confirm("Remove?")){fp(pid).milestones.splice(i,1);save();}};
 window.descEdit=(pid,v)=>{fp(pid).description=v;ds();};
@@ -339,7 +364,8 @@ window.genReport=async ty=>{
   if(ty==="quarterly"){inputModal("Quarterly Report",[{id:'q',label:'Quarter',placeholder:'1, 2, 3, or 4'}],q=>doGen(q));}else doGen(null);
 };
 window.exportDocx=async ty=>{const qArr=[...reportQuarters].sort();const q=ty==="quarterly"?(qArr.length?qArr[0]:null):null;if(ty==="quarterly"&&!qArr.length){toast("Select at least one quarter (Q1–Q4).");return;}const ids=[...document.querySelectorAll(".re-cb:checked")].map(el=>el.value);const n=document.getElementById("re-notes")?.value||"";const ti=document.getElementById("re-title")?.value||"";const detail=document.querySelector('input[name="re-detail"]:checked')?.value||"checkin";const inclTables=document.getElementById("re-tables")?.checked||false;const inclTasks=document.getElementById("re-tasks")?.checked||false;const dateFrom=document.getElementById("re-from")?.value||null;const dateTo=document.getElementById("re-to")?.value||null;toast("Generating .docx...");try{const r=await api("/api/reports/export-docx",{method:"POST",body:JSON.stringify({type:ty,quarter:q?+q:null,projectIds:ids,notes:n,title:ti,detail,includeTables:inclTables,includeTasks:inclTasks,dateFrom,dateTo})});console.log("Export response:",r);if(r.ok){dlFile(r.downloadUrl,r.filename);toast("Downloaded!");reports=await api("/api/reports");render();}else{toast("Error: "+(r.error||"unknown"));console.error("Export error:",r);}}catch(e){toast("Export failed");console.error("Export exception:",e);}};
-window.viewReport=async fn=>{if(fn.endsWith(".docx")){dlFile("/api/reports/"+fn,fn);}else{const r=await(await api("/api/reports/"+fn,{raw:true})).text();document.getElementById("re-out").innerHTML='<pre class="rp">'+esc(r)+'</pre>';}};
+window.viewReport=async fn=>{if(fn.endsWith(".docx")||fn.endsWith(".xlsx")){dlFile("/api/reports/"+fn,fn);}else{const r=await(await api("/api/reports/"+fn,{raw:true})).text();document.getElementById("re-out").innerHTML='<pre class="rp">'+esc(r)+'</pre>';}};
+window.exportXlsx=async()=>{const ids=[...document.querySelectorAll(".re-cb:checked")].map(el=>el.value);const dateFrom=document.getElementById("re-from")?.value||null;const dateTo=document.getElementById("re-to")?.value||null;toast("Generating .xlsx...");try{const r=await api("/api/reports/export-xlsx",{method:"POST",body:JSON.stringify({projectIds:ids,dateFrom,dateTo})});if(r.ok){dlFile(r.downloadUrl,r.filename);toast("Downloaded!");reports=await api("/api/reports");render();}else{toast("Error: "+(r.error||"unknown"));}}catch(e){toast("Export failed");}};
 function dlFile(url,name){const a=document.createElement("a");a.href=url;a.download=name||"download";document.body.appendChild(a);a.click();document.body.removeChild(a);};
 window.viewArchive=async fn=>{const t=await(await api("/api/archive/"+fn,{raw:true})).text();showModal("Closure Report",'<pre class="rp" style="max-height:60vh">'+esc(t)+'</pre>');};
 // Board status change
@@ -594,7 +620,7 @@ window.openModal=(type,extra)=>{
   else if(type==="addMs"){showModal("Add Milestone",'<div class="mf"><label class="ml">Milestone</label><input class="mi" id="nm-n"></div><div class="mf"><label class="ml">Target Date</label><input class="mi" id="nm-d" type="date"></div><div class="mf"><label class="ml">Notes</label><textarea class="mt" id="nm-no"></textarea></div><div class="ma"><button class="btn sm ol" style="color:#999;border-color:#999" onclick="closeModal()">Cancel</button><button class="btn sm" style="background:var(--blue)" onclick="saveNM(\''+extra+'\')">Add</button></div>');}
   else if(type==="editProj"){const p=fp(extra);showModal("Edit Project",'<div class="mf"><label class="ml">Name</label><input class="mi" id="ep-n" value="'+esc(p.name)+'"></div><div class="mf"><label class="ml">Short Name</label><input class="mi" id="ep-s" value="'+esc(p.shortName)+'"></div><div class="mr"><div class="mf"><label class="ml">Owner</label><input class="mi" id="ep-o" value="'+esc(p.owner)+'"></div><div class="mf"><label class="ml">Sponsor</label><input class="mi" id="ep-sp" value="'+esc(p.sponsor)+'"></div></div><div class="mf"><label class="ml">Target Date</label><input class="mi" id="ep-d" type="date" value="'+(p.targetDate||'')+'"></div><div class="ma"><button class="btn sm ol" style="color:#999;border-color:#999" onclick="closeModal()">Cancel</button><button class="btn sm" style="background:var(--blue)" onclick="saveEP(\''+extra+'\')">Save</button></div>');}
 };
-window.saveNP=c=>{const n=document.getElementById("np-n").value.trim(),s=document.getElementById("np-s").value.trim().toUpperCase();if(!n||!s)return alert("Name and short name required.");state.projects.push({id:uid(),name:n,shortName:s,color:c,owner:document.getElementById("np-o").value.trim(),sponsor:document.getElementById("np-sp").value.trim(),targetDate:document.getElementById("np-d").value,archived:false,description:document.getElementById("np-ds").value.trim(),dependencies:[],risks:[],milestones:[],goalRefs:[...npGoalRefs]});closeModal();save();};
+window.saveNP=c=>{const n=document.getElementById("np-n").value.trim(),s=document.getElementById("np-s").value.trim().toUpperCase();if(!n||!s)return alert("Name and short name required.");state.projects.push({id:uid(),name:n,shortName:s,color:c,owner:document.getElementById("np-o").value.trim(),sponsor:document.getElementById("np-sp").value.trim(),targetDate:document.getElementById("np-d").value,archived:false,hideCompletedMs:false,description:document.getElementById("np-ds").value.trim(),dependencies:[],risks:[],milestones:[],goalRefs:[...npGoalRefs]});closeModal();save();};
 window.saveNM=pid=>{const n=document.getElementById("nm-n").value.trim();if(!n)return;fp(pid).milestones.push({id:uid(),name:n,target:document.getElementById("nm-d").value,status:"not-started",notes:document.getElementById("nm-no").value.trim()});closeModal();save();};
 window.saveEP=id=>{const p=fp(id);p.name=document.getElementById("ep-n").value.trim()||p.name;p.shortName=document.getElementById("ep-s").value.trim().toUpperCase()||p.shortName;p.owner=document.getElementById("ep-o").value.trim();p.sponsor=document.getElementById("ep-sp").value.trim();p.targetDate=document.getElementById("ep-d").value;closeModal();save();};
 window.togPGPicker=id=>{pgPickerOpen=(pgPickerOpen===id)?null:id;render();};
@@ -639,7 +665,7 @@ function render(){
   else if(tab==="journal") h+=rJournal(ap);
   else if(tab==="reports") h+=rReports(ap);
   else if(tab==="archive") h+=rArchive();
-  else if(tab==="notes") h+=rNotes();
+  else if(tab==="notes") h+=rQuickNote()+rNotes();
   else if(tab==="profile") h+=rProfile();
   else if(tab==="1on1") h+=r1on1();
 
@@ -764,10 +790,11 @@ function rProjects(ap){
       pLinks.forEach((lk,li)=>{h+='<a class="proj-link" href="'+esc(lk.url)+'" target="_blank" title="'+esc(lk.url)+'">🔗 '+esc(lk.label)+'<span class="x-btn" style="font-size:12px;margin-left:2px" onclick="event.preventDefault();event.stopPropagation();rmProjLink(\''+p.id+'\','+li+')">×</span></a>';});
       h+='<button style="font-size:10px;color:var(--blue);border:1px dashed #ccc;background:none;padding:3px 10px;border-radius:14px;cursor:pointer" onclick="addProjLink(\''+p.id+'\')">+ Add Link</button></div>';
       // Milestones
-      h+='<div style="margin:8px 0 12px"><div class="sh"><span class="sh-t">Milestones</span><button class="sh-a" onclick="openModal(\'addMs\',\''+p.id+'\')">+ Add</button></div>';
+      h+='<div style="margin:8px 0 12px"><div class="sh"><span class="sh-t">Milestones</span><div style="display:flex;gap:10px;align-items:center"><label style="display:flex;align-items:center;gap:4px;font-size:10px;font-weight:400;text-transform:none;letter-spacing:normal;color:#aaa;cursor:pointer;user-select:none"><input type="checkbox" style="width:11px;height:11px;cursor:pointer;accent-color:#999"'+(p.hideCompletedMs?" checked":"")+' onchange="toggleHideCompletedMs(\''+p.id+'\')">Hide completed</label><button class="sh-a" onclick="msSort(\''+p.id+'\')">Sort by date</button><button class="sh-a" onclick="openModal(\'addMs\',\''+p.id+'\')">+ Add</button></div></div>';
       h+='<div class="ms-h"><span></span><span>Milestone</span><span>Target</span><span>Status</span><span></span></div>';
-      p.milestones.forEach((m,i)=>{const d=dt(m.target),ov=d!==null&&d<0&&m.status!=="complete",sm=SM[m.status],isExpanded=expMs[p.id+"-"+m.id];
-        h+='<div class="ms-r'+(m.status==="complete"?" dn":"")+'" onclick="togMs(\''+p.id+'\',\''+m.id+'\')"><div style="display:flex;flex-direction:column;gap:1px"><button class="ms-mv" onclick="event.stopPropagation();msMove(\''+p.id+'\','+i+',-1)">▲</button><button class="ms-mv" onclick="event.stopPropagation();msMove(\''+p.id+'\','+i+',1)">▼</button></div><div onclick="event.stopPropagation()"><input class="ie" value="'+esc(m.name)+'" oninput="msEdit(\''+p.id+'\','+i+',\'name\',this.value)"><div style="display:flex;gap:6px;align-items:center;margin-top:1px">'+(m.owner?'<span style="font-size:9px;color:var(--blue);font-weight:600">👤 '+esc(m.owner)+'</span>':'')+((m.bullets||[]).length?'<span style="font-size:9px;color:#bbb">'+m.bullets.length+' notes</span>':'')+((m.links||[]).length?'<span style="font-size:9px;color:#bbb">'+m.links.length+' links</span>':'')+((!m.owner&&!(m.bullets||[]).length&&!(m.links||[]).length)?'<span style="font-size:9px;color:#ddd;font-style:italic">click to expand</span>':'')+'</div></div><div onclick="event.stopPropagation()"><input type="date" class="ie-date" value="'+(m.target||'')+'" onchange="msEdit(\''+p.id+'\','+i+',\'target\',this.value)">'+(ov?'<div style="font-size:9px;font-weight:700;color:var(--red)">'+Math.abs(d)+'d late</div>':(!ov&&d!==null&&d<=14&&m.status!=="complete"?'<div style="font-size:9px;font-weight:600;color:var(--gold)">'+d+'d</div>':""))+'</div><select class="ms-sel" style="border:1.5px solid '+sm.bg+';color:'+sm.bg+'" onclick="event.stopPropagation()" onchange="setMs(\''+p.id+'\','+i+',this.value)">'+ST.map(s=>'<option value="'+s.v+'"'+(m.status===s.v?" selected":"")+'>'+s.l+'</option>').join('')+'</select><button class="x-btn" onclick="event.stopPropagation();rmMs(\''+p.id+'\','+i+')">×</button></div>';
+      const msVis=p.milestones.map((m,i)=>({m,i})).filter(pr=>!(p.hideCompletedMs&&pr.m.status==="complete"));
+      msVis.forEach(({m,i})=>{const d=dt(m.target),ov=d!==null&&d<0&&m.status!=="complete",sm=SM[m.status],isExpanded=expMs[p.id+"-"+m.id];
+        h+='<div class="ms-r'+(m.status==="complete"?" dn":"")+'" ondragover="event.preventDefault()" ondrop="msDrop(event,\''+p.id+'\','+i+')" onclick="togMs(\''+p.id+'\',\''+m.id+'\')"><div style="display:flex;flex-direction:column;align-items:center;gap:1px"><span class="ms-mv" draggable="true" title="Drag to reorder" style="cursor:grab;font-size:12px" onclick="event.stopPropagation()" ondragstart="msDragStart(event,\''+p.id+'\','+i+')">⠿</span><button class="ms-mv" onclick="event.stopPropagation();msMove(\''+p.id+'\','+i+',-1)">▲</button><button class="ms-mv" onclick="event.stopPropagation();msMove(\''+p.id+'\','+i+',1)">▼</button></div><div onclick="event.stopPropagation()"><input class="ie" value="'+esc(m.name)+'" oninput="msEdit(\''+p.id+'\','+i+',\'name\',this.value)"><div style="display:flex;gap:6px;align-items:center;margin-top:1px">'+(m.owner?'<span style="font-size:9px;color:var(--blue);font-weight:600">👤 '+esc(m.owner)+'</span>':'')+((m.bullets||[]).length?'<span style="font-size:9px;color:#bbb">'+m.bullets.length+' notes</span>':'')+((m.links||[]).length?'<span style="font-size:9px;color:#bbb">'+m.links.length+' links</span>':'')+((!m.owner&&!(m.bullets||[]).length&&!(m.links||[]).length)?'<span style="font-size:9px;color:#ddd;font-style:italic">click to expand</span>':'')+'</div></div><div onclick="event.stopPropagation()"><input type="date" class="ie-date" value="'+(m.target||'')+'" onchange="msEdit(\''+p.id+'\','+i+',\'target\',this.value)">'+(ov?'<div style="font-size:9px;font-weight:700;color:var(--red)">'+Math.abs(d)+'d late</div>':(!ov&&d!==null&&d<=14&&m.status!=="complete"?'<div style="font-size:9px;font-weight:600;color:var(--gold)">'+d+'d</div>':""))+'</div><select class="ms-sel" style="border:1.5px solid '+sm.bg+';color:'+sm.bg+'" onclick="event.stopPropagation()" onchange="setMs(\''+p.id+'\','+i+',this.value)">'+ST.map(s=>'<option value="'+s.v+'"'+(m.status===s.v?" selected":"")+'>'+s.l+'</option>').join('')+'</select><button class="x-btn" onclick="event.stopPropagation();rmMs(\''+p.id+'\','+i+')">×</button></div>';
         // Expanded detail panel
         if(isExpanded){
           h+='<div class="ms-exp">';
@@ -856,9 +883,9 @@ function rReports(ap){
   h+='<label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="re-tasks" checked style="accent-color:#511207"> Include completed tasks</label>';
   h+='</div>';
   h+='<div style="margin-bottom:12px"><label class="ml">Notes</label><textarea class="mt" id="re-notes" rows="2" style="font-size:12px" placeholder="Additional context for this report..."></textarea></div>';
-  h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px"><button class="btn sm" style="background:var(--red)" onclick="exportDocx(\'checkin\')">&#11015; Export .docx</button><button class="btn sm ol" style="color:#511207;border-color:#511207" onclick="exportDocx(\'quarterly\')">'+([...reportQuarters].sort().map(q=>'Q'+q).join('+')||'Quarterly')+' .docx</button><button class="btn sm ol" style="color:#888;border-color:#888" onclick="genReport(\'checkin\')">Preview markdown</button><button class="btn sm" style="background:var(--purple);margin-left:auto" onclick="aiDraft()">✦ AI Draft</button></div>';
+  h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px"><button class="btn sm" style="background:var(--red)" onclick="exportDocx(\'checkin\')">&#11015; Export .docx</button><button class="btn sm ol" style="color:#511207;border-color:#511207" onclick="exportDocx(\'quarterly\')">'+([...reportQuarters].sort().map(q=>'Q'+q).join('+')||'Quarterly')+' .docx</button><button class="btn sm" style="background:var(--green)" onclick="exportXlsx()">&#11015; Export .xlsx (all data)</button><button class="btn sm ol" style="color:#888;border-color:#888" onclick="genReport(\'checkin\')">Preview markdown</button><button class="btn sm" style="background:var(--purple);margin-left:auto" onclick="aiDraft()">✦ AI Draft</button></div>';
   h+='<div id="re-out"></div>';
-  if(reports.length){h+='<div style="margin-top:14px;border-top:1px solid #eee;padding-top:10px"><div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;margin-bottom:6px">Previous Reports</div>';reports.forEach(r=>{h+='<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:11px"><span style="font-weight:600;color:#511207;min-width:36px">'+esc(r.format)+'</span><span style="color:#888">'+esc(r.type)+'</span><span style="color:#aaa;font-size:10px">'+fdf(r.date)+'</span><button class="btn sm ol" style="color:var(--blue);border-color:var(--blue);padding:2px 8px;font-size:9px;margin-left:auto" onclick="viewReport(\''+esc(r.filename)+'\')">'+(r.format==="docx"?"Download":"View")+'</button></div>';});h+='</div>';}
+  if(reports.length){h+='<div style="margin-top:14px;border-top:1px solid #eee;padding-top:10px"><div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;margin-bottom:6px">Previous Reports</div>';reports.forEach(r=>{h+='<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:11px"><span style="font-weight:600;color:#511207;min-width:36px">'+esc(r.format)+'</span><span style="color:#888">'+esc(r.type)+'</span><span style="color:#aaa;font-size:10px">'+fdf(r.date)+'</span><button class="btn sm ol" style="color:var(--blue);border-color:var(--blue);padding:2px 8px;font-size:9px;margin-left:auto" onclick="viewReport(\''+esc(r.filename)+'\')">'+((r.format==="docx"||r.format==="xlsx")?"Download":"View")+'</button></div>';});h+='</div>';}
   h+='</div></div>';return h;
 }
 
@@ -1132,14 +1159,15 @@ function rArchive(){
 }
 
 function r1on1(){
-  if(!on1Notes.length)return '<div class="card" style="border-top:4px solid #0F3A85"><div class="card-b" style="border:none;padding-top:14px"><div style="font-family:var(--fh);font-size:16px;font-weight:700;color:#0F3A85;margin-bottom:10px">1:1 Meeting Notes</div><div style="text-align:center;padding:24px;color:#bbb;font-size:12px">No 1:1 notes found in vault.<br>Run Invoke-OneNote1on1Harvest.ps1 to import from OneNote.</div></div></div>';
+  if(!on1Notes.length)return '<div class="card" style="border-top:4px solid #0F3A85"><div class="card-b" style="border:none;padding-top:14px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div style="font-family:var(--fh);font-size:16px;font-weight:700;color:#0F3A85">1:1 Meeting Notes</div><button title="How this works" onclick="show1on1Info()" style="border:none;background:none;cursor:pointer;color:#0F3A85;font-size:14px;padding:0;line-height:1">ⓘ</button></div><div style="text-align:center;padding:24px;color:#bbb;font-size:12px">No 1:1 notes found in vault.<br>Run Invoke-OneNote1on1Harvest.ps1 to import from OneNote.</div></div></div>';
   const totalMeetings=on1Notes.reduce((s,p)=>s+p.meetings.length,0);
   const openAI=on1Notes.reduce((s,p)=>s+p.meetings.reduce((ss,m)=>ss+m.openActions.length,0),0);
   let h='<div>';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div style="font-family:var(--fh);font-size:16px;font-weight:700;color:#0F3A85">1:1 Meeting Notes</div><button title="How this works" onclick="show1on1Info()" style="border:none;background:none;cursor:pointer;color:#0F3A85;font-size:14px;padding:0;line-height:1">ⓘ</button></div>';
   h+='<div class="sum">'+sc("People",on1Notes.length,"tracked","#0F3A85")+sc("Meetings",totalMeetings,"in vault","#144B2D")+sc("Open Items",openAI,openAI?"need follow-up":"all clear",openAI?"#E1251B":"#144B2D")+'</div>';
   on1Notes.forEach(p=>{
     const last=p.meetings[0];
-    const allOpen=p.meetings.flatMap(m=>m.openActions);
+    const allOpen=p.meetings.flatMap(m=>m.openActions.map(a=>({file:m.file,text:a})));
     const allWatch=p.meetings.flatMap(m=>m.watchItems);
     h+='<div class="card" style="border-top:4px solid #0F3A85;margin-bottom:10px"><div class="card-b" style="border:none;padding-top:14px">';
     h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">';
@@ -1152,7 +1180,7 @@ function r1on1(){
     if(allOpen.length){
       h+='<div style="font-size:10px;font-weight:700;color:#E1251B;letter-spacing:.5px;margin-bottom:4px">OPEN ACTION ITEMS</div>';
       h+='<ul style="margin:0 0 10px;padding-left:16px">';
-      allOpen.slice(0,5).forEach(a=>h+='<li style="font-size:12px;color:#333;margin-bottom:3px">'+esc(a)+'</li>');
+      allOpen.slice(0,5).forEach(a=>h+='<li style="font-size:12px;color:#333;margin-bottom:3px;display:flex;align-items:center;gap:6px"><span style="flex:1">'+esc(a.text)+'</span><button title="Mark done" onclick="on1Close(\''+esc(a.file).replace(/'/g,"\\'")+'\',\''+esc(a.text).replace(/'/g,"\\'")+'\')" style="border:none;background:none;cursor:pointer;color:#144B2D;font-size:13px;padding:0;flex-shrink:0">✓</button><button title="Remove" onclick="on1Delete(\''+esc(a.file).replace(/'/g,"\\'")+'\',\''+esc(a.text).replace(/'/g,"\\'")+'\')" style="border:none;background:none;cursor:pointer;color:#E1251B;font-size:13px;padding:0;flex-shrink:0">×</button></li>');
       if(allOpen.length>5)h+='<li style="font-size:11px;color:#888">...and '+(allOpen.length-5)+' more</li>';
       h+='</ul>';
     }
@@ -1178,6 +1206,9 @@ function r1on1(){
   h+='</div>';
   return h;
 }
+window.show1on1Info=()=>{showModal("How This Works",'<div style="font-size:12px;color:#444;line-height:1.6"><p style="margin-top:0">These notes are pulled <strong>read-only</strong> from your Second Brain vault\'s <code>01-lp1-work/1on1</code> folder, populated by the <code>Invoke-OneNote1on1Harvest.ps1</code> script.</p><p>Notes are grouped by <strong>person</strong>, with each meeting showing:</p><ul style="padding-left:18px;margin:6px 0"><li><span style="color:#E1251B;font-weight:600">Open action items</span> — still outstanding</li><li><span style="color:#144B2D;font-weight:600">Completed action items</span> — already checked off</li><li><span style="color:#C4571A;font-weight:600">What to Watch</span> — things to keep an eye on</li></ul><p style="margin-bottom:0">Open action items can be <strong>checked off (✓)</strong> or <strong>removed (×)</strong> directly from this view — this edits the matching line in the underlying vault markdown file, nothing else in the file is touched.</p></div><div class="ma"><button class="btn sm" style="background:var(--blue)" onclick="closeModal()">Got it</button></div>');};
+window.on1Close=async(file,text)=>{await api('/api/1on1/'+encodeURIComponent(file)+'/action',{method:'PATCH',body:JSON.stringify({action:'close',text})}).catch(()=>{});on1Notes=await api('/api/1on1').catch(()=>[]);render();toast('Action item closed');};
+window.on1Delete=async(file,text)=>{if(!confirm('Remove this action item?'))return;await api('/api/1on1/'+encodeURIComponent(file)+'/action',{method:'PATCH',body:JSON.stringify({action:'delete',text})}).catch(()=>{});on1Notes=await api('/api/1on1').catch(()=>[]);render();toast('Action item removed');};
 
 // ═══ TASKS ═══
 // Persistent form state — survives render() cycles
@@ -1449,8 +1480,8 @@ function rGoals(){
 }
 
 // ═══ SETTINGS ═══
-window.openSettings=()=>{showModal("Settings",'<div class="mf"><label class="ml">Your Name</label><input class="mi" id="st-name" value="'+esc(cfg.name||'')+'"></div><div class="mf"><label class="ml">Team / Group</label><input class="mi" id="st-team" value="'+esc(cfg.team||'')+'"></div><div class="mf"><label class="ml">Organization</label><input class="mi" id="st-org" value="'+esc(cfg.org||'')+'"></div><div class="mf"><label class="ml">Accent Color</label><div style="display:flex;align-items:center;gap:8px"><input type="color" id="st-color" value="'+(cfg.primaryColor||'#0F3A85')+'" oninput="document.getElementById(\'st-color-lbl\').textContent=this.value;document.documentElement.style.setProperty(\'--primary\',this.value)" style="width:40px;height:32px;border:1px solid #ddd;border-radius:4px;cursor:pointer"><span id="st-color-lbl" style="font-size:12px;color:#888">'+(cfg.primaryColor||'#0F3A85')+'</span></div></div><div style="background:#f0f4f0;border:1px solid #c8dcc8;border-radius:6px;padding:8px 12px;font-size:11px;color:#144B2D;margin-top:4px">✓ AI connected via Lilly SSO (lilly-code)</div><div class="ma"><button class="btn sm ol" style="color:#999;border-color:#999" onclick="closeModal()">Cancel</button><button class="btn sm" style="background:var(--primary)" onclick="saveSettings()">Save</button></div>');};
-window.saveSettings=async()=>{const name=document.getElementById("st-name").value.trim()||cfg.name;const team=document.getElementById("st-team").value.trim();const org=document.getElementById("st-org").value.trim();const color=document.getElementById("st-color").value;await api("/api/config",{method:"PUT",body:JSON.stringify({name,team,org,primaryColor:color,setupComplete:true})});cfg={...cfg,name,team,org,primaryColor:color};document.documentElement.style.setProperty("--primary",color);document.title=name+"'s Projects";closeModal();toast("Settings saved");render();};
+window.openSettings=()=>{showModal("Settings",'<div class="mf"><label class="ml">Your Name</label><input class="mi" id="st-name" value="'+esc(cfg.name||'')+'"></div><div class="mf"><label class="ml">Team / Group</label><input class="mi" id="st-team" value="'+esc(cfg.team||'')+'"></div><div class="mf"><label class="ml">Organization</label><input class="mi" id="st-org" value="'+esc(cfg.org||'')+'"></div><div class="mf"><label class="ml">Accent Color</label><div style="display:flex;align-items:center;gap:8px"><input type="color" id="st-color" value="'+(cfg.primaryColor||'#0F3A85')+'" oninput="document.getElementById(\'st-color-lbl\').textContent=this.value;document.documentElement.style.setProperty(\'--primary\',this.value)" style="width:40px;height:32px;border:1px solid #ddd;border-radius:4px;cursor:pointer"><span id="st-color-lbl" style="font-size:12px;color:#888">'+(cfg.primaryColor||'#0F3A85')+'</span></div></div><div class="mf"><label class="ml">Second Brain Location</label><input class="mi" id="st-vault" placeholder="e.g. C:\\Dev\\second-brain" value="'+esc(cfg.secondBrainPath||'')+'"><div style="font-size:11px;color:#999;margin-top:4px">'+(cfg.effectiveSecondBrainPath?('Currently using: '+esc(cfg.effectiveSecondBrainPath)):'Path to your notes vault (Obsidian or otherwise) — used for 1:1 notes and profile sync.')+'</div></div><div class="mf"><label class="ml">OneNote Export Folder</label><input class="mi" id="st-onenote" placeholder="e.g. C:\\Users\\you\\OneNote Exports" value="'+esc(cfg.oneNoteExportPath||'')+'"><div style="font-size:11px;color:#999;margin-top:4px">'+(cfg.effectiveOneNoteExportPath?('Currently set: '+esc(cfg.effectiveOneNoteExportPath)):'Folder where you save OneNote page exports (.mht/.zip/.docx) — for now, still import them manually via Notes → Import Notes.')+'</div></div><div style="background:#f0f4f0;border:1px solid #c8dcc8;border-radius:6px;padding:8px 12px;font-size:11px;color:#144B2D;margin-top:4px">✓ AI connected via Lilly SSO (lilly-code)</div><div style="font-size:11px;color:#999;margin-top:8px;text-align:right">My Projects v'+esc(cfg.version||'—')+'</div><div class="ma"><button class="btn sm ol" style="color:#999;border-color:#999" onclick="closeModal()">Cancel</button><button class="btn sm" style="background:var(--primary)" onclick="saveSettings()">Save</button></div>');};
+window.saveSettings=async()=>{const name=document.getElementById("st-name").value.trim()||cfg.name;const team=document.getElementById("st-team").value.trim();const org=document.getElementById("st-org").value.trim();const color=document.getElementById("st-color").value;const secondBrainPath=document.getElementById("st-vault").value.trim();const oneNoteExportPath=document.getElementById("st-onenote").value.trim();const r=await api("/api/config",{method:"PUT",body:JSON.stringify({name,team,org,primaryColor:color,secondBrainPath,oneNoteExportPath,setupComplete:true})});cfg={...cfg,name,team,org,primaryColor:color,secondBrainPath,oneNoteExportPath,effectiveSecondBrainPath:r?.config?.secondBrainPath||cfg.effectiveSecondBrainPath,effectiveOneNoteExportPath:r?.config?.oneNoteExportPath||cfg.effectiveOneNoteExportPath};document.documentElement.style.setProperty("--primary",color);document.title=name+"'s Projects";closeModal();if(secondBrainPath&&r&&r.vaultPathExists===false){toast("Settings saved — warning: that Second Brain path doesn't exist yet");}else if(oneNoteExportPath&&r&&r.oneNoteExportPathExists===false){toast("Settings saved — warning: that OneNote export folder doesn't exist yet");}else{toast("Settings saved");}render();};
 
 // ═══ AI HELPERS ═══
 function buildReportContext(ap){
@@ -1542,6 +1573,10 @@ function patchNote(id,data){api("/api/notes/"+id,{method:"PATCH",body:JSON.strin
 window.toggleNotePin=id=>{const n=notes.find(n=>n.id===id);if(!n)return;n.pinned=!n.pinned;patchNote(id,{pinned:n.pinned});};
 window.rmNote=async id=>{if(!confirm("Delete note?"))return;await api("/api/notes/"+id,{method:"DELETE"});await load();};
 window.addNoteToMemory=id=>{const n=notes.find(n=>n.id===id);if(!n)return;const addition="\n\n--- NOTE: "+n.title+" ---\n"+n.content;memoryContent+=addition;const ta=document.getElementById("mem-content");if(ta)ta.value=memoryContent;api("/api/memory",{method:"PUT",body:JSON.stringify({content:memoryContent})});toast("Added to AI Memory");};
+window.exportNote=function(id){const n=notes.find(n=>n.id===id)||(noteEditNote&&noteEditNote.id===id?noteEditNote:null);if(!n){toast('Note not found');return;}const ext=n.richContent?'.html':'.md';const fname=(n.title||'Untitled').replace(/[\\/:*?"<>|]/g,'-').trim()+ext;dlFile('/api/notes/'+id+'/export',fname);toast('Exported');};
+window.exportNotesZip=async function(noteIds,busyMsg){if(!noteIds.length){toast('No notes to export');return;}toast(busyMsg||'Building .zip…');try{const r=await api('/api/notes/export-zip',{method:'POST',body:JSON.stringify({noteIds})});if(r.ok){dlFile(r.downloadUrl,r.filename);toast('Downloaded!');}else toast('Error: '+(r.error||'unknown'));}catch(e){toast('Export failed');}};
+window.exportNotesFolder=function(nb,sec){const ids=notes.filter(n=>n.notebook===nb&&(!sec||n.section===sec)).map(n=>n.id);exportNotesZip(ids,'Building folder .zip…');};
+window.exportAllNotes=async function(){if(!notes.length){toast('No notes to export');return;}toast('Building .zip…');try{const r=await api('/api/notes/export-zip-all',{method:'POST'});if(r.ok){dlFile(r.downloadUrl,r.filename);toast('Downloaded!');}else toast('Error: '+(r.error||'unknown'));}catch(e){toast('Export failed');}};
 window.downloadNotesDocx=async function(){
   const ids=[...noteExportSel];
   if(!ids.length){toast('Select at least one note');return;}
@@ -1568,20 +1603,32 @@ window.setNoteSearch=function(val,pos){noteSearch=val;render();requestAnimationF
 window.moveNb=function(nb,dir){const allNbsRaw=[...new Set(notes.map(n=>n.notebook).filter(Boolean))];allNbsRaw.forEach(n=>{if(!noteNbOrder.includes(n))noteNbOrder.push(n);});const i=noteNbOrder.indexOf(nb);if(i<0)return;const j=i+dir;if(j<0||j>=noteNbOrder.length)return;[noteNbOrder[i],noteNbOrder[j]]=[noteNbOrder[j],noteNbOrder[i]];localStorage.setItem('noteNbOrder',JSON.stringify(noteNbOrder));render();};
 window.moveSec=function(nb,sec,dir){const allSecsList=[...new Set(notes.filter(n=>n.notebook===nb).map(n=>n.section).filter(Boolean))];if(!noteSecOrder[nb])noteSecOrder[nb]=[];allSecsList.forEach(s=>{if(!noteSecOrder[nb].includes(s))noteSecOrder[nb].push(s);});const i=noteSecOrder[nb].indexOf(sec);if(i<0)return;const j=i+dir;if(j<0||j>=noteSecOrder[nb].length)return;[noteSecOrder[nb][i],noteSecOrder[nb][j]]=[noteSecOrder[nb][j],noteSecOrder[nb][i]];localStorage.setItem('noteSecOrder',JSON.stringify(noteSecOrder));render();};
 window.saveNoteEditor=async function(){
-  const titleEl=document.getElementById('nm-title');if(!titleEl)return;
-  const title=titleEl.value.trim()||'Untitled';
-  const nb=(document.getElementById('nm-nb')?.value||'').trim();
-  const sec=(document.getElementById('nm-sec')?.value||'').trim();
-  const goalRefs=collectAllNmGoalRefs();const projectRefs=mpGetVals('nm-proj');
-  const id=noteEditId==='new'?null:noteEditId;
-  const hasHtml=!!(noteEditNote?.contentHtml);
-  let body;
-  if(window._nmEditMode){const content=document.getElementById('nm-content')?.value||'';body={title,notebook:nb,section:sec,content,contentHtml:'',goalRefs,projectRefs};}
-  else{body={title,notebook:nb,section:sec,goalRefs,projectRefs};if(!hasHtml)body.content=document.getElementById('nm-content')?.value||'';}
-  window._nmEditMode=false;
-  if(id){await api('/api/notes/'+id,{method:'PATCH',body:JSON.stringify(body)});}
-  else if(title!=='Untitled'||body.content){await api('/api/notes',{method:'POST',body:JSON.stringify({...body,content:document.getElementById('nm-content')?.value||''})});}
-  await load();toast('Saved');
+  if(window._noteSaving)return;
+  window._noteSaving=true;
+  try{
+    const titleEl=document.getElementById('nm-title');if(!titleEl)return;
+    const title=titleEl.value.trim()||'Untitled';
+    const nb=(document.getElementById('nm-nb')?.value||'').trim();
+    const sec=(document.getElementById('nm-sec')?.value||'').trim();
+    const goalRefs=collectAllNmGoalRefs();const projectRefs=mpGetVals('nm-proj');
+    const id=noteEditId==='new'?null:noteEditId;
+    const hasHtml=!!(noteEditNote?.contentHtml);
+    let body;
+    if(window._nmEditMode){const content=document.getElementById('nm-content')?.value||'';body={title,notebook:nb,section:sec,content,contentHtml:'',goalRefs,projectRefs};}
+    else{body={title,notebook:nb,section:sec,goalRefs,projectRefs};if(!hasHtml)body.content=document.getElementById('nm-content')?.value||'';}
+    window._nmEditMode=false;
+    let r=null;
+    if(id){r=await api('/api/notes/'+id,{method:'PATCH',body:JSON.stringify(body)});}
+    else if(title!=='Untitled'||body.content){r=await api('/api/notes',{method:'POST',body:JSON.stringify({...body,content:document.getElementById('nm-content')?.value||''})});}
+    if(r?.ok&&r.note){
+      if(noteEditId==='new')noteEditId=r.note.id;
+      if(noteEditId===r.note.id)noteEditNote=r.note;
+      const{contentHtml,...meta}=r.note;
+      const idx=notes.findIndex(n=>n.id===r.note.id);
+      if(idx>=0)notes[idx]={...notes[idx],...meta};else notes.push(meta);
+    }
+    toast('Saved');
+  } finally { window._noteSaving=false; }
 };
 window.closeNoteEditor=async function(){
   await saveNoteEditor();
@@ -1644,6 +1691,7 @@ function rNoteEditor(){
     h+='<button class="btn sm ol" style="color:var(--gold);border-color:var(--gold);font-size:10px" onclick="toggleNotePin(\''+id+'\')">📌 '+(existing.pinned?'Unpin':'Pin')+'</button>';
     h+='<button class="btn sm ol" style="color:var(--green);border-color:var(--green);font-size:10px" onclick="addNoteToMemory(\''+id+'\')">+ Memory</button>';
     h+='<button class="btn sm ol" style="color:#5B4FCF;border-color:#5B4FCF;font-size:10px" onclick="scanNote(\''+id+'\')">&#10022; Scan</button>';
+    h+='<button class="btn sm ol" style="color:#888;border-color:#ccc;font-size:10px" onclick="exportNote(\''+id+'\')">&#8659; Export</button>';
     h+='<button class="btn sm ol" style="color:var(--red);border-color:var(--red);font-size:10px" onclick="if(confirm(\'Delete?\'))rmNote(\''+id+'\')">Delete</button>';
   }
   h+='<button class="btn sm" style="background:var(--blue);font-size:10px" onclick="saveNoteEditor()">Save</button>';
@@ -1959,8 +2007,8 @@ function rProfile(){
   if(profile)h+='<button class="btn sm ol" style="font-size:10px" onclick="profEnterEdit()">&#9998; Edit</button>&nbsp;';
   h+='<button class="btn sm ol" style="font-size:10px" onclick="triggerProfileGenerate(false)">&#8635; Re-analyze</button>';
   if(profile){
-    h+='&nbsp;<button class="btn sm ol" style="font-size:10px;color:#478c6e;border-color:#478c6e" onclick="obsidianPull()" title="Pull from Obsidian vault and merge">&#8592; Obsidian</button>';
-    h+='&nbsp;<button class="btn sm ol" style="font-size:10px;color:#478c6e;border-color:#478c6e" onclick="obsidianPush()" title="Push profile to Obsidian vault">&#8594; Obsidian</button>';
+    h+='&nbsp;<button class="btn sm ol" style="font-size:10px;color:#478c6e;border-color:#478c6e" onclick="obsidianPull()" title="Pull from Second Brain vault and merge">&#8592; Second Brain</button>';
+    h+='&nbsp;<button class="btn sm ol" style="font-size:10px;color:#478c6e;border-color:#478c6e" onclick="obsidianPush()" title="Push profile to Second Brain vault">&#8594; Second Brain</button>';
   }
   h+='</div>';
   if(_profileGenerating){h+='<div style="text-align:center;padding:40px;color:#aaa;font-size:13px">✦ Analyzing your notes…</div></div>';return h;}
@@ -2090,15 +2138,15 @@ window.saveProfileMemory=async function(){
 };
 
 window.obsidianPush=async function(){
-  toast('Pushing to Obsidian vault…');
+  toast('Pushing to Second Brain vault…');
   const r=await api('/api/obsidian/push',{method:'POST',body:JSON.stringify({})});
   if(r.ok)toast('Pushed to '+r.path.split(/[/\\]/).slice(-3).join('/'));
   else toast('Push failed: '+(r.error||'error'));
 };
 
 window.obsidianPull=async function(){
-  if(!confirm('Pull from Obsidian vault? This will add any new data found in vault files to your profile. Existing data is never removed.'))return;
-  toast('Pulling from Obsidian vault…');
+  if(!confirm('Pull from Second Brain vault? This will add any new data found in vault files to your profile. Existing data is never removed.'))return;
+  toast('Pulling from Second Brain vault…');
   const r=await api('/api/obsidian/pull',{method:'POST',body:JSON.stringify({})});
   if(!r.ok){toast('Pull failed: '+(r.error||'error'));return;}
   if(!r.merged){toast(r.message||'No vault content found');return;}
@@ -2107,7 +2155,7 @@ window.obsidianPull=async function(){
     profile=pr.profile;memoryContent=profile.memory||'';render();
     const s=r.additionSummary||{};
     const added=Object.entries(s).filter(([,n])=>n>0).map(([k,n])=>n+' '+k).join(', ');
-    toast('Synced from Obsidian'+(added?' — added: '+added:'  (no new items found)'));
+    toast('Synced from Second Brain'+(added?' — added: '+added:'  (no new items found)'));
   }else toast('Save failed: '+(pr.error||'error'));
 };
 function rNoteImport(){
@@ -2179,6 +2227,7 @@ function rNotes(){
   h+='<button class="btn sm ol" style="font-size:10px;width:100%;color:var(--blue);border-color:var(--blue)" onclick="window._impFiles=[];noteView=\'import\';render()">&#11019; Import Notes</button>';
   h+='<button class="btn sm ol" style="font-size:10px;width:100%;color:#5B4FCF;border-color:#5B4FCF" onclick="scanState=\'idle\';noteView=\'scan\';render()">&#10022; Scan with Claude</button>';
   h+='<button class="btn sm ol" style="font-size:10px;width:100%;color:var(--green);border-color:var(--green)" onclick="noteExportMode=!noteExportMode;noteExportSel=new Set();render()">&#8659; Export .docx</button>';
+  h+='<button class="btn sm ol" style="font-size:10px;width:100%;color:#888;border-color:#ccc" onclick="exportAllNotes()">&#8659; Export All Notes (.zip)</button>';
   h+='</div>';
   h+='</div>';
 
@@ -2211,7 +2260,7 @@ function rNotes(){
       h+='<button class="btn sm" style="background:var(--green);font-size:10px" '+(selN===0?'disabled':'')+' onclick="downloadNotesDocx()">&#8659; Download '+selN+' Note'+(selN!==1?'s':'')+' as .docx</button>';
     }else{
       h+='<div style="font-family:var(--fh);font-size:15px;font-weight:700;color:#5B4FCF">Notes</div>';
-      if(nFilter.nb){h+='<span style="font-size:11px;color:#666">'+esc(nFilter.nb)+(nFilter.sec?' › '+esc(nFilter.sec):"")+'</span>';}
+      if(nFilter.nb){h+='<span style="font-size:11px;color:#666">'+esc(nFilter.nb)+(nFilter.sec?' › '+esc(nFilter.sec):"")+'</span>';h+='<button class="btn sm ol" style="font-size:10px;color:#888;border-color:#ccc" onclick="exportNotesFolder(\''+nFilter.nb.replace(/'/g,"\\'")+'\','+(nFilter.sec?'\''+nFilter.sec.replace(/'/g,"\\'")+'\'':'null')+')">&#8659; Export Folder</button>';}
       h+='<div style="flex:1"></div>';
       h+='<input id="note-srch" placeholder="Search notes…" value="'+esc(noteSearch)+'" oninput="setNoteSearch(this.value,this.selectionStart)" style="font-size:11px;padding:5px 10px;border-radius:14px;border:1px solid #ddd;width:160px">';
       h+='<button class="btn sm ol" style="font-size:10px" onclick="window._impFiles=[];noteView=\'import\';render()">&#11019; Import</button>';
