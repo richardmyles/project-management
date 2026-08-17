@@ -12,7 +12,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 | File | When to use |
 |------|-------------|
-| `My Projects Setup 1.0.12.exe` | Standard installer — adds to Start Menu and desktop |
+| `My Projects Setup 1.0.13.exe` | Standard installer — adds to Start Menu and desktop |
 | `MyProjects-portable.exe` | No install needed — run from anywhere, including a USB drive |
 
 ---
@@ -51,8 +51,6 @@ Click **Get Started**. Your settings are saved locally in `config.json` and the 
 ## Auto-Updates
 
 The app checks for updates automatically a few seconds after launch. When a new version is available it downloads in the background. Once ready, a prompt asks whether to **Restart Now** or **Later**. Updates are pulled from this repository's GitHub Releases.
-
-You can also trigger a manual check any time from **Settings → Check for Updates**, which shows the current status (up to date, update found, downloading, or ready to restart).
 
 You can also trigger a manual check any time from **Settings → Check for Updates**, which shows the current status (up to date, update found, downloading, or ready to restart).
 
