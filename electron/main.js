@@ -10,7 +10,15 @@ const PORT = process.env.PORT || 3201;
 let mainWindow;
 let tray;
 
+let updateStatus = { state: "idle", version: null, message: null, checkedAt: null };
+
 function setupAutoUpdater() {
+  // Default no-op checker; overridden below when running packaged
+  global.__appUpdater = {
+    getStatus: () => updateStatus,
+    checkNow: () => Promise.reject(new Error("Auto-update is only available in the installed app.")),
+  };
+
   // Only run in packaged app, not during development
   if (!app.isPackaged) return;
   try {
@@ -18,11 +26,21 @@ function setupAutoUpdater() {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
 
-    autoUpdater.on("update-available", () => {
-      // Download happens automatically; user is notified when ready to install
+    autoUpdater.on("checking-for-update", () => {
+      updateStatus = { state: "checking", version: null, message: null, checkedAt: new Date().toISOString() };
     });
 
-    autoUpdater.on("update-downloaded", () => {
+    autoUpdater.on("update-available", info => {
+      // Download happens automatically; user is notified when ready to install
+      updateStatus = { state: "available", version: info.version, message: null, checkedAt: new Date().toISOString() };
+    });
+
+    autoUpdater.on("update-not-available", () => {
+      updateStatus = { state: "not-available", version: null, message: null, checkedAt: new Date().toISOString() };
+    });
+
+    autoUpdater.on("update-downloaded", info => {
+      updateStatus = { state: "downloaded", version: info.version, message: null, checkedAt: new Date().toISOString() };
       const result = dialog.showMessageBoxSync(mainWindow, {
         type: "info",
         title: "Update Ready",
@@ -38,13 +56,17 @@ function setupAutoUpdater() {
     });
 
     autoUpdater.on("error", err => {
+      updateStatus = { state: "error", version: null, message: err.message, checkedAt: new Date().toISOString() };
       console.error("[updater] error:", err.message);
     });
+
+    global.__appUpdater.checkNow = () => autoUpdater.checkForUpdates();
 
     // Check for updates shortly after launch
     setTimeout(() => autoUpdater.checkForUpdates(), 5000);
   } catch (e) {
     console.error("[updater] electron-updater not available:", e.message);
+    updateStatus = { state: "error", version: null, message: e.message, checkedAt: new Date().toISOString() };
   }
 }
 

@@ -77,7 +77,19 @@ function getOneNoteExportPath() {
 }
 
 // ═══ CONFIG ═══
-app.get("/api/config", (req, res) => { res.json({ ...getConfig(), version: APP_VERSION, effectiveSecondBrainPath: getVaultPath(), effectiveOneNoteExportPath: getOneNoteExportPath() }); });
+app.get("/api/config", (req, res) => { res.json({ ...getConfig(), version: APP_VERSION, updateSupported: !!global.__appUpdater, effectiveSecondBrainPath: getVaultPath(), effectiveOneNoteExportPath: getOneNoteExportPath() }); });
+
+app.post("/api/app/check-update", async (req, res) => {
+  const updater = global.__appUpdater;
+  if (!updater) return res.json({ ok: false, state: "unsupported", message: "Updates are only available in the installed desktop app." });
+  try {
+    await updater.checkNow();
+    await new Promise(r => setTimeout(r, 500)); // let update-available/not-available events settle
+    res.json({ ok: true, ...updater.getStatus() });
+  } catch (e) {
+    res.json({ ok: false, state: "error", message: e.message });
+  }
+});
 app.put("/api/config", (req, res) => {
   const updated = { ...getConfig(), ...req.body, setupComplete: true };
   writeJSON(CONFIG_FILE, updated);

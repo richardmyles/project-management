@@ -21,7 +21,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 ### Installer (recommended)
 
-1. Download `My Projects Setup 1.0.12.exe`
+1. Download `My Projects Setup 1.0.13.exe`
 2. Run it and follow the prompts
 3. Launch **My Projects** from the Start Menu or desktop shortcut
 
@@ -51,6 +51,10 @@ Click **Get Started**. Your settings are saved locally in `config.json` and the 
 ## Auto-Updates
 
 The app checks for updates automatically a few seconds after launch. When a new version is available it downloads in the background. Once ready, a prompt asks whether to **Restart Now** or **Later**. Updates are pulled from this repository's GitHub Releases.
+
+You can also trigger a manual check any time from **Settings → Check for Updates**, which shows the current status (up to date, update found, downloading, or ready to restart).
+
+You can also trigger a manual check any time from **Settings → Check for Updates**, which shows the current status (up to date, update found, downloading, or ready to restart).
 
 ---
 
@@ -107,7 +111,7 @@ See `.env.example` in the repository for a full template. `.env` is gitignored �
 
 **1:1s** — track one-on-one meeting notes pulled from your Second Brain vault, with an in-app "how this works" guide and the ability to mark open action items done or remove them
 
-**Settings** — personalize your name, team, org, and accent colour; optionally configure a Second Brain vault path (for 1:1 notes sync) and a OneNote export folder
+**Settings** — personalize your name, team, org, and accent colour; optionally configure a Second Brain vault path (for 1:1 notes sync) and a OneNote export folder; manually check for app updates
 
 **Archive** — closed project snapshots with auto-generated closure reports
 
