@@ -110,12 +110,12 @@ function showWindow() {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, "icon.ico");
+  const iconPath = path.join(__dirname, "tray.png");
   console.log(`[icon] trying tray icon: ${iconPath}`);
   const icon = fs.existsSync(iconPath)
     ? nativeImage.createFromPath(iconPath)
     : nativeImage.createEmpty();
-  if (icon.isEmpty()) console.warn("[icon] tray icon is empty - check icon.ico");
+  if (icon.isEmpty()) console.warn("[icon] tray icon is empty - check tray.png");
   else console.log("[icon] tray icon loaded OK");
   tray = new Tray(icon);
   tray.setToolTip("My Projects");
