@@ -1191,17 +1191,70 @@ function saveMemory(content) {
 }
 
 // ═══ CLAUDE AI ═══
-const AI_BASE_URL = process.env.AI_BASE_URL || "";
-const AI_MODEL = process.env.AI_MODEL || "claude-sonnet-4-5";
+const DEFAULT_AI_MODEL = "claude-sonnet-4-5";
+const DEFAULT_CODING_AGENT_CMD = "claude --dangerously-skip-permissions";
 let _tokenCache = { value: null, expiresAt: 0 };
+
+function getAIConfig() {
+  const cfg = getConfig();
+  return {
+    mode: "none",
+    apiKey: "",
+    baseUrl: "",
+    model: "",
+    tokenCmd: "",
+    codingAgentCmd: DEFAULT_CODING_AGENT_CMD,
+    gitBashPath: "",
+    ...(cfg.aiConfig || {}),
+  };
+}
+
+function maskSecret(secret) {
+  if (!secret) return "";
+  return "••••••••" + (secret.length > 4 ? secret.slice(-4) : "");
+}
+
+function isMaskedSecret(value) {
+  return typeof value === "string" && value.startsWith("••••••••");
+}
+
+// Env vars always win — preserves existing corporate SSO setups; config.json is the fallback
+// for users without env vars configured.
+function resolveAICredentials() {
+  const tokenCmd = process.env.AI_TOKEN_CMD;
+  if (tokenCmd) {
+    return { mode: "tokenCmd", tokenCmd, baseUrl: process.env.AI_BASE_URL || "", model: process.env.AI_MODEL || "", source: "env" };
+  }
+  const envKey = process.env.AI_API_KEY || process.env.ANTHROPIC_API_KEY;
+  if (envKey) {
+    return { mode: "apiKey", apiKey: envKey, baseUrl: process.env.AI_BASE_URL || "", model: process.env.AI_MODEL || "", source: "env" };
+  }
+  const aiConfig = getAIConfig();
+  if (aiConfig.mode === "tokenCmd" && aiConfig.tokenCmd) {
+    return { mode: "tokenCmd", tokenCmd: aiConfig.tokenCmd, baseUrl: aiConfig.baseUrl, model: aiConfig.model, source: "config" };
+  }
+  if ((aiConfig.mode === "apiKey" || aiConfig.mode === "gateway") && aiConfig.apiKey) {
+    return { mode: aiConfig.mode, apiKey: aiConfig.apiKey, baseUrl: aiConfig.baseUrl, model: aiConfig.model, source: "config" };
+  }
+  return { mode: "none", source: "none" };
+}
+
+function getAIModel() {
+  return resolveAICredentials().model || DEFAULT_AI_MODEL;
+}
+
+function getAIBaseURL() {
+  return resolveAICredentials().baseUrl || "";
+}
 
 function makeAnthropicClient(apiKey) {
   const Anthropic = require("@anthropic-ai/sdk");
-  if (AI_BASE_URL) {
+  const baseUrl = getAIBaseURL();
+  if (baseUrl) {
     // Some corporate gateways require Authorization: Bearer — override the SDK's default x-api-key header
     return new Anthropic({
       apiKey: "placeholder",
-      baseURL: AI_BASE_URL,
+      baseURL: baseUrl,
       defaultHeaders: { authorization: "Bearer " + apiKey, "x-api-key": undefined },
     });
   }
@@ -1219,24 +1272,106 @@ function extractAIText(message) {
 function getAIToken() {
   const now = Date.now();
   if (_tokenCache.value && _tokenCache.expiresAt > now + 30000) return _tokenCache.value;
-  // If a CLI token command is configured, use it; otherwise fall back to AI_API_KEY env var
-  const tokenCmd = process.env.AI_TOKEN_CMD;
-  if (tokenCmd) {
+  const creds = resolveAICredentials();
+  if (creds.mode === "tokenCmd") {
     try {
       const { execSync } = require("child_process");
-      const token = execSync(tokenCmd, { timeout: 10000, shell: true }).toString().trim();
+      const token = execSync(creds.tokenCmd, { timeout: 10000, shell: true }).toString().trim();
       if (!token) throw new Error("empty token");
-    _tokenCache = { value: token, expiresAt: now + 270000 };
+      _tokenCache = { value: token, expiresAt: now + 270000 };
       return token;
     } catch (e) {
-      throw new Error("Could not get AI token via AI_TOKEN_CMD: " + e.message);
+      throw new Error("Could not get AI token via token command: " + e.message);
     }
   }
-  // Fall back to static API key
-  const key = process.env.AI_API_KEY || process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("No AI credentials configured. Set AI_API_KEY or AI_TOKEN_CMD in your environment.");
-  return key;
+  if (creds.apiKey) return creds.apiKey;
+  throw new Error("No AI credentials configured. Set AI_API_KEY/AI_TOKEN_CMD in your environment, or configure AI in Settings.");
 }
+
+app.get("/api/ai-config", (req, res) => {
+  const aiConfig = getAIConfig();
+  const creds = resolveAICredentials();
+  const secret = creds.mode === "tokenCmd" ? creds.tokenCmd : creds.apiKey;
+  res.json({
+    mode: creds.mode,
+    configured: creds.mode !== "none",
+    source: creds.source,
+    maskedKey: secret ? maskSecret(secret) : "",
+    baseUrl: aiConfig.baseUrl,
+    model: aiConfig.model,
+    codingAgentCmd: aiConfig.codingAgentCmd || DEFAULT_CODING_AGENT_CMD,
+    gitBashPath: aiConfig.gitBashPath || "",
+  });
+});
+
+app.put("/api/ai-config", (req, res) => {
+  const existing = getAIConfig();
+  const body = req.body || {};
+  const apiKey = isMaskedSecret(body.apiKey) ? existing.apiKey : (body.apiKey || "");
+  const tokenCmd = isMaskedSecret(body.tokenCmd) ? existing.tokenCmd : (body.tokenCmd || "");
+  const updatedAIConfig = {
+    mode: body.mode || existing.mode,
+    apiKey,
+    baseUrl: body.baseUrl !== undefined ? body.baseUrl : existing.baseUrl,
+    model: body.model !== undefined ? body.model : existing.model,
+    tokenCmd,
+    codingAgentCmd: body.codingAgentCmd !== undefined ? body.codingAgentCmd : existing.codingAgentCmd,
+    gitBashPath: body.gitBashPath !== undefined ? body.gitBashPath : existing.gitBashPath,
+  };
+  const cfg = getConfig();
+  const updated = { ...cfg, aiConfig: updatedAIConfig };
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(updated, null, 2), "utf8");
+  _configCache = updated;
+  _tokenCache = { value: null, expiresAt: 0 };
+  const creds = resolveAICredentials();
+  const secret = creds.mode === "tokenCmd" ? creds.tokenCmd : creds.apiKey;
+  res.json({
+    ok: true,
+    mode: creds.mode,
+    source: creds.source,
+    maskedKey: secret ? maskSecret(secret) : "",
+    baseUrl: updatedAIConfig.baseUrl,
+    model: updatedAIConfig.model,
+    codingAgentCmd: updatedAIConfig.codingAgentCmd,
+    gitBashPath: updatedAIConfig.gitBashPath,
+  });
+});
+
+app.post("/api/ai-config/test", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const existing = getAIConfig();
+    const mode = body.mode || existing.mode;
+    let apiKey;
+    if (mode === "tokenCmd") {
+      const tokenCmd = isMaskedSecret(body.tokenCmd) ? existing.tokenCmd : body.tokenCmd;
+      if (!tokenCmd) throw new Error("No token command provided");
+      const { execSync } = require("child_process");
+      apiKey = execSync(tokenCmd, { timeout: 10000, shell: true }).toString().trim();
+      if (!apiKey) throw new Error("Token command returned an empty token");
+    } else if (mode === "apiKey" || mode === "gateway") {
+      apiKey = isMaskedSecret(body.apiKey) ? existing.apiKey : body.apiKey;
+      if (!apiKey) throw new Error("No API key provided");
+    } else {
+      throw new Error("Select a mode before testing");
+    }
+    const Anthropic = require("@anthropic-ai/sdk");
+    const baseUrl = body.baseUrl !== undefined ? body.baseUrl : existing.baseUrl;
+    const client = baseUrl
+      ? new Anthropic({ apiKey: "placeholder", baseURL: baseUrl, defaultHeaders: { authorization: "Bearer " + apiKey, "x-api-key": undefined } })
+      : new Anthropic({ apiKey });
+    const model = (body.model !== undefined ? body.model : existing.model) || DEFAULT_AI_MODEL;
+    const message = await client.messages.create({
+      model,
+      max_tokens: 16,
+      messages: [{ role: "user", content: "Reply with the single word OK." }],
+    });
+    extractAIText(message);
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
 
 app.post("/api/claude", async (req, res) => {
   try {
@@ -1252,7 +1387,7 @@ app.post("/api/claude", async (req, res) => {
         ]
       : prompt;
     const message = await client.messages.create({
-      model: AI_MODEL,
+      model: getAIModel(),
       max_tokens: 2048,
       messages: [{ role: "user", content: userContent }]
     });
@@ -1316,7 +1451,7 @@ NOTES CORPUS (${notes.length} notes):
 ${corpus}`;
 
     const message = await client.messages.create({
-      model: AI_MODEL,
+      model: getAIModel(),
       max_tokens: 3000,
       messages: [{ role: "user", content: prompt }]
     });
@@ -1434,7 +1569,7 @@ app.post("/api/scan", (req, res, next) => getUpload().array("files", 20)(req, re
     const apiKey = getAIToken();
     const client = makeAnthropicClient(apiKey);
     const message = await client.messages.create({
-      model: AI_MODEL, max_tokens: 4096,
+      model: getAIModel(), max_tokens: 4096,
       messages: [{ role: "user", content: userContent }],
     });
 
@@ -1505,7 +1640,7 @@ app.post("/api/scan/note/:id", async (req, res) => {
     const apiKey = getAIToken();
     const client = makeAnthropicClient(apiKey);
     const message = await client.messages.create({
-      model: AI_MODEL, max_tokens: 4096,
+      model: getAIModel(), max_tokens: 4096,
       messages: [{ role: "user", content: userContent }],
     });
 
@@ -1643,7 +1778,7 @@ Write in clear, factual prose. No markdown headers needed — plain paragraphs a
     const apiKey = getAIToken();
     const client = makeAnthropicClient(apiKey);
     const message = await client.messages.create({
-      model: AI_MODEL, max_tokens: 1200,
+      model: getAIModel(), max_tokens: 1200,
       messages: [{ role: "user", content: refreshPrompt }],
     });
     const newMemory = extractAIText(message).trim();
@@ -1765,7 +1900,7 @@ Return JSON with ONLY the new items to add (omit any array that has nothing new)
 }`;
 
     const message = await client.messages.create({
-      model: AI_MODEL, max_tokens: 1500,
+      model: getAIModel(), max_tokens: 1500,
       messages: [{ role: "user", content: prompt }],
     });
     const raw = extractAIText(message);
@@ -1888,7 +2023,9 @@ app.post("/api/briefing/run", (req, res) => {
   const logFile = path.join(BRIEFING_DIR, "run.log");
 
   // Claude Code on Windows requires git-bash — spawn it directly
+  const aiConfig = getAIConfig();
   const bashCandidates = [
+    aiConfig.gitBashPath,
     process.env.CLAUDE_CODE_GIT_BASH_PATH,
     "C:\\Program Files\\Git\\bin\\bash.exe",
     "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
@@ -1909,7 +2046,7 @@ app.post("/api/briefing/run", (req, res) => {
   const logStream = fs.createWriteStream(logFile, { flags: "w" });
   let proc;
   try {
-    proc = spawn(bashExe, ["-c", "claude --dangerously-skip-permissions < \"$1\"", "--", tmpPrompt], {
+    proc = spawn(bashExe, ["-c", `${aiConfig.codingAgentCmd || DEFAULT_CODING_AGENT_CMD} < "$1"`, "--", tmpPrompt], {
       windowsHide: true,
       env: { ...process.env, HOME: process.env.USERPROFILE || process.env.HOME || "" },
       stdio: ["ignore", "pipe", "pipe"],

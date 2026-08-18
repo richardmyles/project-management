@@ -12,7 +12,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 | File | When to use |
 |------|-------------|
-| `My Projects Setup 1.0.14.exe` | Standard installer — adds to Start Menu and desktop |
+| `My Projects Setup 1.0.15.exe` | Standard installer — adds to Start Menu and desktop |
 | `MyProjects-portable.exe` | No install needed — run from anywhere, including a USB drive |
 
 ---
@@ -21,7 +21,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 ### Installer (recommended)
 
-1. Download `My Projects Setup 1.0.14.exe`
+1. Download `My Projects Setup 1.0.15.exe`
 2. Run it and follow the prompts
 3. Launch **My Projects** from the Start Menu or desktop shortcut
 
@@ -60,7 +60,22 @@ You can also trigger a manual check any time from **Settings → Check for Updat
 
 Some features use the Claude API for AI-assisted summaries and suggestions. This is optional — the app works fully without it.
 
-To enable AI features, create a `.env` file next to the app's data folder with one of the following options:
+### In-app setup (recommended)
+
+Go to **Settings** and click the AI status line to open **AI Configuration**. Choose a mode, fill in the fields that appear, optionally click **Test Connection**, then **Save** — no `.env` file or restart required:
+
+- **Anthropic API Key** — paste your key directly
+- **Corporate API Gateway** — key + base URL + model
+- **CLI Token Command (SSO)** — a command that prints a short-lived token (e.g. your corporate CLI tool)
+- **None** — disables AI features
+
+Secrets are stored locally in `config.json` and are never echoed back to the UI in plaintext — the field always shows a masked value (`••••••••abcd`) once saved.
+
+The same modal also has a **Coding Agent Command** and an optional **Git Bash Path**, used by the app's briefing/automation feature to launch a coding agent (defaults to `claude --dangerously-skip-permissions`). Adjust these if you use a different CLI or a non-default Git Bash install location.
+
+### Environment variables (alternative)
+
+If you'd rather configure AI via environment variables, create a `.env` file next to the app's data folder with one of the following options. **Environment variables always take priority** over the in-app AI Configuration settings:
 
 **Option A — Anthropic API key:**
 ```
