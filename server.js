@@ -79,6 +79,11 @@ function getOneNoteExportPath() {
 // ═══ CONFIG ═══
 app.get("/api/config", (req, res) => { res.json({ ...getConfig(), version: APP_VERSION, updateSupported: !!global.__appUpdater, effectiveSecondBrainPath: getVaultPath(), effectiveOneNoteExportPath: getOneNoteExportPath() }); });
 
+app.get("/api/app/update-status", (req, res) => {
+  const updater = global.__appUpdater;
+  res.json(updater ? updater.getStatus() : { state: "unsupported" });
+});
+
 app.post("/api/app/check-update", async (req, res) => {
   const updater = global.__appUpdater;
   if (!updater) return res.json({ ok: false, state: "unsupported", message: "Updates are only available in the installed desktop app." });
