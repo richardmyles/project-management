@@ -12,7 +12,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 | File | When to use |
 |------|-------------|
-| `My Projects Setup 1.0.15.exe` | Standard installer — adds to Start Menu and desktop |
+| `My Projects Setup 1.0.16.exe` | Standard installer — adds to Start Menu and desktop |
 | `MyProjects-portable.exe` | No install needed — run from anywhere, including a USB drive |
 
 ---
@@ -21,7 +21,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 ### Installer (recommended)
 
-1. Download `My Projects Setup 1.0.15.exe`
+1. Download `My Projects Setup 1.0.16.exe`
 2. Run it and follow the prompts
 3. Launch **My Projects** from the Start Menu or desktop shortcut
 
@@ -50,7 +50,9 @@ Click **Get Started**. Your settings are saved locally in `config.json` and the 
 
 ## Auto-Updates
 
-The app checks for updates automatically a few seconds after launch. When a new version is available it downloads in the background. Once ready, a prompt asks whether to **Restart Now** or **Later**. Updates are pulled from this repository's GitHub Releases.
+The app checks for updates automatically a few seconds after launch. When a new version is available it downloads in the background, and a persistent status bar shows live progress (checking / downloading with percent / stalled / ready to restart / error). Once ready, a prompt asks whether to **Restart Now** or **Later**. Updates are pulled from this repository's GitHub Releases.
+
+If a download stalls (no progress for over a minute), the status bar flags it and offers a **Retry** button. If the app becomes unresponsive mid-update, an alert appears after sustained unreachability — not on a single blip — so you know to reload rather than wait indefinitely.
 
 You can also trigger a manual check any time from **Settings → Check for Updates**, which shows the current status (up to date, update found, downloading, or ready to restart).
 

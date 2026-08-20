@@ -10,7 +10,18 @@ const PORT = process.env.PORT || 3201;
 let mainWindow;
 let tray;
 
-let updateStatus = { state: "idle", version: null, message: null, checkedAt: null };
+const STALL_MS = 60000;
+const WATCHDOG_INTERVAL_MS = 10000;
+
+let updateStatus = {
+  state: "idle", version: null, message: null, checkedAt: null,
+  percent: null, transferred: null, total: null, bytesPerSecond: null,
+  lastActivityAt: null,
+};
+
+function setUpdateStatus(patch) {
+  updateStatus = { ...updateStatus, ...patch, lastActivityAt: Date.now() };
+}
 
 function setupAutoUpdater() {
   // Default no-op checker; overridden below when running packaged
@@ -27,20 +38,38 @@ function setupAutoUpdater() {
     autoUpdater.autoInstallOnAppQuit = true;
 
     autoUpdater.on("checking-for-update", () => {
-      updateStatus = { state: "checking", version: null, message: null, checkedAt: new Date().toISOString() };
+      setUpdateStatus({
+        state: "checking", version: null, message: null, checkedAt: new Date().toISOString(),
+        percent: null, transferred: null, total: null, bytesPerSecond: null,
+      });
     });
 
     autoUpdater.on("update-available", info => {
-      // Download happens automatically; user is notified when ready to install
-      updateStatus = { state: "available", version: info.version, message: null, checkedAt: new Date().toISOString() };
+      // autoDownload is on, so the download starts immediately after this fires
+      setUpdateStatus({
+        state: "downloading", version: info.version, message: null, checkedAt: new Date().toISOString(),
+        percent: 0, transferred: 0, total: null, bytesPerSecond: null,
+      });
+    });
+
+    autoUpdater.on("download-progress", progress => {
+      setUpdateStatus({
+        state: "downloading", checkedAt: new Date().toISOString(),
+        percent: progress.percent, transferred: progress.transferred,
+        total: progress.total, bytesPerSecond: progress.bytesPerSecond,
+      });
     });
 
     autoUpdater.on("update-not-available", () => {
-      updateStatus = { state: "not-available", version: null, message: null, checkedAt: new Date().toISOString() };
+      setUpdateStatus({ state: "not-available", version: null, message: null, checkedAt: new Date().toISOString() });
+    });
+
+    autoUpdater.on("update-cancelled", () => {
+      setUpdateStatus({ state: "error", message: "Update download was cancelled.", checkedAt: new Date().toISOString() });
     });
 
     autoUpdater.on("update-downloaded", info => {
-      updateStatus = { state: "downloaded", version: info.version, message: null, checkedAt: new Date().toISOString() };
+      setUpdateStatus({ state: "downloaded", version: info.version, message: null, checkedAt: new Date().toISOString() });
       const result = dialog.showMessageBoxSync(mainWindow, {
         type: "info",
         title: "Update Ready",
@@ -56,7 +85,7 @@ function setupAutoUpdater() {
     });
 
     autoUpdater.on("error", err => {
-      updateStatus = { state: "error", version: null, message: err.message, checkedAt: new Date().toISOString() };
+      setUpdateStatus({ state: "error", version: null, message: err.message, checkedAt: new Date().toISOString() });
       console.error("[updater] error:", err.message);
     });
 
@@ -64,9 +93,17 @@ function setupAutoUpdater() {
 
     // Check for updates shortly after launch
     setTimeout(() => autoUpdater.checkForUpdates(), 5000);
+
+    // Stall watchdog: if downloading but no progress event for over a minute,
+    // flag it as stalled. Recovers automatically on the next progress event.
+    setInterval(() => {
+      if (updateStatus.state === "downloading" && Date.now() - updateStatus.lastActivityAt > STALL_MS) {
+        updateStatus = { ...updateStatus, state: "stalled", message: "No download progress for over a minute." };
+      }
+    }, WATCHDOG_INTERVAL_MS);
   } catch (e) {
     console.error("[updater] electron-updater not available:", e.message);
-    updateStatus = { state: "error", version: null, message: e.message, checkedAt: new Date().toISOString() };
+    updateStatus = { ...updateStatus, state: "error", version: null, message: e.message, checkedAt: new Date().toISOString() };
   }
 }
 
