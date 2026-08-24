@@ -54,6 +54,15 @@ function readJSON(fp, fallback) {
 function writeJSON(fp, data) { fs.writeFileSync(fp, JSON.stringify(data, null, 2), "utf8"); }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function today() { return new Date().toISOString().split("T")[0]; }
+function parseGoalRef(ref, defaultYear) {
+  if (!ref) return { year: defaultYear, id: ref };
+  const c = ref.indexOf(":");
+  if (c === -1) return { year: defaultYear, id: ref };
+  return { year: parseInt(ref.slice(0, c)), id: ref.slice(c + 1) };
+}
+function hasGoalRef(refs, year, id) {
+  return (refs || []).some(ref => { const r = parseGoalRef(ref, year); return r.year === year && r.id === id; });
+}
 let _configCache = null;
 function getConfig() {
   if (!_configCache) _configCache = readJSON(CONFIG_FILE, { name: "My", team: "", org: "", primaryColor: "#0F3A85", secondBrainPath: "", oneNoteExportPath: "", setupComplete: false });
@@ -147,6 +156,9 @@ function pushHistory(clearRedo = true) {
 
 function saveState(state) {
   pushHistory();
+  if (Array.isArray(state.journal)) {
+    state.journal.forEach(j => { if (!j.date) j.date = today(); });
+  }
   state.lastUpdated = new Date().toISOString();
   writeJSON(STATE_FILE, state);
 }
@@ -826,7 +838,7 @@ app.post("/api/reports/export-docx", async (req, res) => {
           c.push(new Paragraph({ spacing: { after: 30 }, children: [
             new TextRun({ text: goal.text, font: "Times New Roman", size: 20, color: DARK }),
           ]}));
-          const linked = selected.filter(p => (goal.linkedProjects || []).includes(p.id));
+          const linked = selected.filter(p => hasGoalRef(p.goalRefs, yr, goal.id));
           if (linked.length) {
             for (const p of linked) {
               const comp = p.milestones.filter(m => m.status === "complete").length;
@@ -841,6 +853,13 @@ app.post("/api/reports/export-docx", async (req, res) => {
               inProg.forEach(m => c.push(new Paragraph({ spacing: { after: 4 }, indent: { left: 480 }, children: [new TextRun({ text: "▸  " + m.name + (m.target ? " — " + m.target : ""), font: "Arial", size: 16, color: DARK })] })));
               atRsk.forEach(m => c.push(new Paragraph({ spacing: { after: 4 }, indent: { left: 480 }, children: [new TextRun({ text: "⚠  " + m.name, font: "Arial", size: 16, color: RED })] })));
             }
+          }
+          const linkedGoalTasks = (state.tasks || []).filter(t => hasGoalRef(t.goalRefs, yr, goal.id) && (inRange(t.created) || inRange(t.completed)));
+          if (linkedGoalTasks.length) {
+            linkedGoalTasks.forEach(t => c.push(new Paragraph({ spacing: { after: 4 }, indent: { left: 240 }, children: [
+              new TextRun({ text: (t.status === "done" ? "✓  " : "○  "), font: "Arial", size: 16, color: t.status === "done" ? GREEN : GRAY }),
+              new TextRun({ text: t.text, font: "Arial", size: 16, color: t.status === "done" ? GRAY : DARK }),
+            ]})));
           }
         }
       }
@@ -887,11 +906,17 @@ app.post("/api/reports/export-docx", async (req, res) => {
       ]}));
       showTasks.forEach(t => {
         const proj = state.projects.find(p => p.id === t.project);
+        const goalNames = (t.goalRefs || []).map(ref => {
+          const { year: ry, id: rid } = parseGoalRef(ref, yr);
+          const gd = ry === yr ? goalsData : readJSON(path.join(GOALS_DIR, ry + "_goals.json"), null);
+          return gd && gd.goals ? gd.goals.find(g => g.id === rid)?.text : null;
+        }).filter(Boolean);
         c.push(new Paragraph({ spacing: { after: 4 }, children: [
           new TextRun({ text: (t.status === "done" ? "✓" : "○") + "  ", font: "Arial", size: 16, color: t.status === "done" ? GREEN : GRAY }),
           proj ? new TextRun({ text: "[" + proj.shortName + "]  ", font: "Arial", size: 16, bold: true, color: GRAY }) : new TextRun({ text: "" }),
           new TextRun({ text: t.text, font: "Arial", size: 16, color: DARK }),
           t.owner ? new TextRun({ text: "  (" + t.owner + ")", font: "Arial", size: 14, color: BLUE }) : new TextRun({ text: "" }),
+          goalNames.length ? new TextRun({ text: "  [Goal: " + goalNames.join(", ") + "]", font: "Arial", size: 14, italics: true, color: GRAY }) : new TextRun({ text: "" }),
         ]}));
       });
     }
@@ -987,10 +1012,15 @@ app.post("/api/reports/export-xlsx", (req, res) => {
       .filter(t => !t.project || selectedIds.has(t.project))
       .map(t => {
         const proj = state.projects.find(p => p.id === t.project);
+        const goalNames = (t.goalRefs || []).map(ref => {
+          const { year: ry, id: rid } = parseGoalRef(ref, yr);
+          const gd = ry === yr ? goalsData : readJSON(path.join(GOALS_DIR, ry + "_goals.json"), null);
+          return gd && gd.goals ? gd.goals.find(g => g.id === rid)?.text : null;
+        }).filter(Boolean).join("; ");
         return {
           Project: proj ? proj.shortName : "", Task: t.text, Status: t.status,
           Created: t.created || "", Completed: t.completed || "", Owner: t.owner || "",
-          Tags: (t.tags || []).join(", "), Notes: t.notes || "",
+          Tags: (t.tags || []).join(", "), Notes: t.notes || "", "Goal(s)": goalNames,
         };
       });
     addSheet("Tasks", taskRows);
@@ -1024,7 +1054,8 @@ app.post("/api/reports/export-xlsx", (req, res) => {
     if (goalsData && goalsData.goals && goalsData.goals.length) {
       addSheet("Goals", goalsData.goals.map(g => ({
         Category: g.category, Goal: g.text, Status: g.status,
-        LinkedProjects: (g.linkedProjects || []).map(id => state.projects.find(p => p.id === id)?.shortName || id).join(", "),
+        LinkedProjects: state.projects.filter(p => hasGoalRef(p.goalRefs, yr, g.id)).map(p => p.shortName).join(", "),
+        LinkedTasks: (state.tasks || []).filter(t => hasGoalRef(t.goalRefs, yr, g.id)).map(t => t.text).join("; "),
         Q1Notes: g.q1Notes || "", Q2Notes: g.q2Notes || "", Q3Notes: g.q3Notes || "", Q4Notes: g.q4Notes || "",
       })));
     }
@@ -1714,7 +1745,7 @@ app.post("/api/scan/apply", (req, res) => {
 
     for (const t of tasks) {
       state.tasks.unshift({ id: uid(), text: t.text, status: "open", created: today(), completed: null,
-        notes: "", tags: [], project: resolveRef(t.projectRef), owner: "", bullets: [], links: [] });
+        notes: "", tags: [], project: resolveRef(t.projectRef), owner: "", bullets: [], links: [], goalRefs: [] });
     }
 
     for (const j of journal) {
@@ -2107,7 +2138,8 @@ app.post("/api/tasks", (req, res) => {
   if (!state.tasks) state.tasks = [];
   const task = { id: uid(), text: req.body.text, status: "open", created: today(), completed: null,
     notes: req.body.notes || "", tags: req.body.tags || [], project: req.body.project || null,
-    owner: req.body.owner || "", bullets: req.body.bullets || [], links: req.body.links || [] };
+    owner: req.body.owner || "", bullets: req.body.bullets || [], links: req.body.links || [],
+    goalRefs: req.body.goalRefs || [] };
   state.tasks.unshift(task);
   saveState(state);
   res.json({ ok: true, task });
@@ -2117,7 +2149,7 @@ app.patch("/api/tasks/:id", (req, res) => {
   if (!state.tasks) state.tasks = [];
   const task = state.tasks.find(t => t.id === req.params.id);
   if (!task) return res.status(404).json({ error: "Not found" });
-  const ALLOWED_TASK_FIELDS = ["text","status","notes","tags","project","owner","bullets","links","completed"];
+  const ALLOWED_TASK_FIELDS = ["text","status","notes","tags","project","owner","bullets","links","completed","goalRefs"];
   const updates = Object.fromEntries(Object.entries(req.body).filter(([k]) => ALLOWED_TASK_FIELDS.includes(k)));
   Object.assign(task, updates);
   if (req.body.status === "done" && !task.completed) task.completed = today();

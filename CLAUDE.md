@@ -221,6 +221,20 @@ Standard workflow for any release/push to GitHub. **Every release must ship with
 7. **Wait for the workflow, then verify assets attached** — `gh run watch` or `gh run list --workflow=release.yml --limit 1`, then `gh release view vX.Y.Z --json assets` and confirm the installer `.exe`, `.exe.blockmap`, portable `.exe`, and `latest.yml` are all present. If assets are empty, do not consider the release done — check the run log for `existing type not compatible with publishing type`.
 8. **Only after assets are confirmed**, add/refine release notes with `gh release edit vX.Y.Z --notes "..."` — this only edits metadata and never touches uploaded assets.
 
+## Workflow Separation: This Repo vs. `richards-projects`
+
+**This repo (`Project Management`, at the path above) is the only place code changes happen.** A separate checkout, `richards-projects`, exists on the same machine and is a downstream consumer, not a second dev copy:
+
+- **Never edit code directly in `richards-projects`.** It receives updates exclusively via `git pull` from this repo's GitHub remote (`richardmyles/project-management`). If a change is needed, make it here, release it through the normal workflow above, then update `richards-projects` by pulling.
+- **Never push from `richards-projects`.** All commits/tags/releases originate from this repo.
+- If work is ever found already sitting uncommitted in `richards-projects`, treat it as a reconciliation task — diff it against this repo, port anything genuinely new back here, then rely on `git pull` going forward instead of parallel edits.
+
+**Data directory safety on install/update:** the packaged app must never overwrite a user's existing data on install or auto-update. This is already satisfied by two independent mechanisms — don't break either when touching build config or startup logic:
+- `package.json`'s `build.files` allowlist ships only `electron/**/*`, `server.js`, `public/**/*`, `package.json`, and `node_modules/**/*` — it does **not** include `data/`, `config.json`, or `.env`, so an installer/update package can never contain (and therefore can never overwrite) user data.
+- `electron/main.js`'s `ensureData(dataRoot)` only creates data files/directories that don't already exist; it never truncates or resets files that are present. Distributable builds resolve `dataRoot` to `app.getPath("userData")` (`%AppData%\my-projects`), which persists untouched across install/update since installers never touch `AppData`.
+
+If either mechanism is ever changed, re-verify by installing an update over an existing data set and confirming `data/state.json` and `config.json` are unchanged.
+
 ## Dependencies
 
 | Package | Purpose |

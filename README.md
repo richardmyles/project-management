@@ -12,7 +12,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 | File | When to use |
 |------|-------------|
-| `My Projects Setup 1.0.16.exe` | Standard installer — adds to Start Menu and desktop |
+| `My Projects Setup 1.0.17.exe` | Standard installer — adds to Start Menu and desktop |
 | `MyProjects-portable.exe` | No install needed — run from anywhere, including a USB drive |
 
 ---
@@ -21,7 +21,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 ### Installer (recommended)
 
-1. Download `My Projects Setup 1.0.16.exe`
+1. Download `My Projects Setup 1.0.17.exe`
 2. Run it and follow the prompts
 3. Launch **My Projects** from the Start Menu or desktop shortcut
 
@@ -108,7 +108,7 @@ See `.env.example` in the repository for a full template. `.env` is gitignored �
 
 **Projects** — create and manage projects with milestones, risks, dependencies, links, and goal references. Each milestone has a status (complete / in-progress / at-risk / blocked / not-started), owner, notes, and sub-bullets. Milestones can be drag-reordered or auto-sorted by due date, and completed milestones can be hidden per project via a toggle.
 
-**Tasks** — standalone task list with tags, project links, owners, and completion tracking; task text, notes, and owner are directly editable inline
+**Tasks** — standalone task list with tags, project links, goal links, owners, and completion tracking; task text, notes, and owner are directly editable inline. Tasks can be linked to annual goals the same way projects and notes are, and goal-linked tasks appear on the Goal Detail view and in exported reports.
 
 **Notes** — freeform notes, separate from the project journal, with export options (single note, a folder as `.zip`, or all notes as `.zip`), plus an OneNote-style sticky notes panel: jot into an active note, browse previously saved sticky notes stacked below it, and switch between them with one click. Sticky notes are stored under a "Sticky Notes" notebook, so they're also visible from the main Notes list.
 
