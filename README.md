@@ -12,7 +12,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 | File | When to use |
 |------|-------------|
-| `My Projects Setup 1.0.17.exe` | Standard installer — adds to Start Menu and desktop |
+| `My Projects Setup 1.0.18.exe` | Standard installer — adds to Start Menu and desktop |
 | `MyProjects-portable.exe` | No install needed — run from anywhere, including a USB drive |
 
 ---
@@ -21,7 +21,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 ### Installer (recommended)
 
-1. Download `My Projects Setup 1.0.17.exe`
+1. Download `My Projects Setup 1.0.18.exe`
 2. Run it and follow the prompts
 3. Launch **My Projects** from the Start Menu or desktop shortcut
 
@@ -31,7 +31,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 2. Move it wherever you like
 3. Double-click to run — no installation required
 
-> **Note:** Windows may show a SmartScreen warning ("Windows protected your PC") because the app isn't signed with a paid certificate. Click **More info → Run anyway** to proceed.
+> **Note:** Windows may show a SmartScreen warning ("Windows protected your PC") because the app isn't code-signed. Click **More info → Run anyway** to proceed.
 
 ---
 
