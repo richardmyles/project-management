@@ -242,7 +242,7 @@ const SV={high:"#E1251B",medium:"#FFC709",low:"#0F3A85"};
 let state={projects:[],journal:[]},cfg={name:"",team:"",org:"",primaryColor:"#0F3A85",secondBrainPath:"",effectiveSecondBrainPath:"",oneNoteExportPath:"",effectiveOneNoteExportPath:"",version:"",setupComplete:false};
 let goals={},goalMap={mappings:[]},reports=[],archive=[],hist={undo:0,redo:0};
 let tab="dashboard",exp={},jf="all",expMs={},expTk={},expGoals={};
-let npGoalRefs=[],taskFilter="all",goalYear=new Date().getFullYear(),reportQuarters=new Set(),pgPickerOpen=null,goalQSel={};
+let npGoalRefs=[],taskFilter="all",goalYear=new Date().getFullYear(),reportQuarters=new Set(),pgPickerOpen=null,tgPickerOpen=null,goalQSel={};
 let msDrag=null;
 let notes=[],nFilter={nb:null,sec:null},noteSearch="",noteNbOpen={},noteView="notes",noteExportMode=false,noteExportSel=new Set();
 let noteNbOrder=JSON.parse(localStorage.getItem('noteNbOrder')||'[]'),noteSecOrder=JSON.parse(localStorage.getItem('noteSecOrder')||'{}');
@@ -709,6 +709,9 @@ window.saveEP=id=>{const p=fp(id);p.name=document.getElementById("ep-n").value.t
 window.togPGPicker=id=>{pgPickerOpen=(pgPickerOpen===id)?null:id;render();};
 window.toggleProjGoal=(pid,ref)=>{const p=fp(pid);if(!p.goalRefs)p.goalRefs=[];const id=parseGoalRef(ref).id;const i=p.goalRefs.findIndex(r=>r===ref||r===id);if(i===-1)p.goalRefs.push(ref);else p.goalRefs.splice(i,1);save();};
 window.rmProjGoal=(pid,ref)=>{const p=fp(pid);if(!p.goalRefs)return;const id=parseGoalRef(ref).id;p.goalRefs=p.goalRefs.filter(r=>r!==ref&&r!==id);save();};
+window.togTGPicker=id=>{tgPickerOpen=(tgPickerOpen===id)?null:id;render();};
+window.toggleTaskGoal=(tid,ref)=>{const t=(state.tasks||[]).find(tk=>tk.id===tid);if(!t)return;if(!t.goalRefs)t.goalRefs=[];const id=parseGoalRef(ref).id;const i=t.goalRefs.findIndex(r=>r===ref||r===id);if(i===-1)t.goalRefs.push(ref);else t.goalRefs.splice(i,1);patchTask(tid,{goalRefs:t.goalRefs});render();};
+window.rmTaskGoal=(tid,ref)=>{const t=(state.tasks||[]).find(tk=>tk.id===tid);if(!t||!t.goalRefs)return;const id=parseGoalRef(ref).id;t.goalRefs=t.goalRefs.filter(r=>r!==ref&&r!==id);patchTask(tid,{goalRefs:t.goalRefs});render();};
 function showModal(t,b,cls){const o=document.createElement("div");o.className="mo";o.id="mo-ov";o.addEventListener("mousedown",e=>{if(e.target===o)closeModal()});o.innerHTML='<div class="mo-c'+(cls?' '+cls:'')+'" onmousedown="event.stopPropagation()">'+'<div class="mo-h"><span class="mo-t">'+t+'</span><button style="border:none;background:none;font-size:20px;cursor:pointer;color:#999" onclick="closeModal()">×</button></div><div class="mo-b">'+b+'</div></div>';document.body.appendChild(o);}
 window.closeModal=()=>{document.activeElement?.blur();if(window._modalOnClose){const fn=window._modalOnClose;window._modalOnClose=null;fn().catch(()=>{}).finally(()=>{const e=document.getElementById("mo-ov");if(e)e.remove();});return;}const e=document.getElementById("mo-ov");if(e)e.remove();};
 function inputModal(title,fields,onSave){
@@ -1343,6 +1346,7 @@ function rTasks(ap){
     if(proj)h+='<span style="font-size:9px;padding:1px 5px;border-radius:6px;background:'+proj.color+';color:#fff">'+esc(proj.shortName)+'</span>';
     (t.tags||[]).forEach(tag=>{h+='<span style="font-size:9px;padding:1px 5px;border-radius:6px;background:#e0e0e0;color:#666">'+esc(tag)+'</span>';});
     if(t.owner)h+='<span style="font-size:9px;color:var(--blue);font-weight:600">👤 '+esc(t.owner)+'</span>';
+    (t.goalRefs||[]).forEach(ref=>{const{year:gy,id:gid}=parseGoalRef(ref);const g=(goals[gy]?.goals||[]).find(gg=>gg.id===gid&&gg.status!=='discontinued');if(g)h+='<span style="font-size:9px;padding:1px 5px;border-radius:6px;background:#eaf2ff;color:var(--blue)">◎ '+esc(g.text.slice(0,28))+'</span>';});
     if(detailCount&&!isExp)h+='<span style="font-size:9px;color:#bbb">'+detailCount+' details</span>';
     if(!detailCount&&!isExp)h+='<span style="font-size:9px;color:#ddd;font-style:italic">click to expand</span>';
     h+='</div>';
@@ -1361,6 +1365,14 @@ function rTasks(ap){
       (t.tags||[]).forEach((tag,ti)=>{h+='<span style="font-size:9px;padding:1px 5px;border-radius:6px;background:#e0e0e0;color:#666;display:inline-flex;align-items:center;gap:3px">'+esc(tag)+'<button onclick="event.stopPropagation();rmTkTag(\''+t.id+'\','+ti+')" style="border:none;background:none;cursor:pointer;color:#999;padding:0;font-size:11px;line-height:1">×</button></span>';});
       h+='<input id="tk-nt-'+t.id+'" placeholder="Add tag..." style="font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid #ddd;width:90px" onkeydown="if(event.key===\'Enter\'){event.stopPropagation();addTkTag(\''+t.id+'\',this.value);this.value=\'\'}">';
       h+='</div></div></div>';
+      // Related Goals
+      h+='<div class="ms-exp-row"><span class="ms-exp-label">Related Goals</span><div class="ms-exp-content">';
+      h+='<div style="display:flex;justify-content:flex-end;margin-bottom:4px"><button class="sh-a" onclick="togTGPicker(\''+t.id+'\')">+ Link</button></div>';
+      const linkedGoals=(t.goalRefs||[]).reduce((acc,ref)=>{const{year:gy,id:gid}=parseGoalRef(ref);const g=(goals[gy]?.goals||[]).find(gg=>gg.id===gid&&gg.status!=='discontinued');if(g)acc.push({...g,_year:gy,_ref:ref});return acc;},[]);
+      if(linkedGoals.length){linkedGoals.forEach(g=>{const yrBadge=g._year!==topGoalYear()?' <span style="font-size:9px;color:#aaa">('+g._year+')</span>':'';h+='<div style="font-size:11px;color:#555;padding:3px 0;display:flex;gap:4px;align-items:center"><span style="color:var(--blue)">◎</span><span style="flex:1">'+esc(g.text)+yrBadge+'</span><button class="x-btn" style="font-size:14px" onclick="rmTaskGoal(\''+t.id+'\',\''+esc(g._ref||g.id)+'\')">×</button></div>';});}
+      else{h+='<div style="font-size:11px;color:#bbb;font-style:italic;padding:4px 0">No linked goals</div>';}
+      if(tgPickerOpen===t.id){const allG=[];Object.entries(goals).sort(([a],[b])=>b-a).forEach(([yr,yrData])=>{(yrData.goals||[]).filter(g=>g.status!=='discontinued').forEach(g=>{allG.push({...g,_year:parseInt(yr),_ref:makeGoalRef(g.id,parseInt(yr))});});});h+='<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">';allG.forEach(g=>{const sel=(t.goalRefs||[]).some(r=>r===g._ref||r===g.id);const yrLabel=g._year!==topGoalYear()?' ('+g._year+')':'';h+='<button class="sug-chip" style="border-color:var(--blue);background:'+(sel?"var(--blue)":"transparent")+';color:'+(sel?"#fff":"var(--blue)")+'" onclick="toggleTaskGoal(\''+t.id+'\',\''+g._ref+'\')" title="'+esc(g.category)+'">'+esc((g.text+yrLabel).slice(0,44))+'</button>';});h+='</div>';}
+      h+='</div></div>';
       // Bullets
       h+='<div class="ms-exp-row"><span class="ms-exp-label">Notes</span><div class="ms-exp-content">';
       (t.bullets||[]).forEach((b,bi)=>{
@@ -1392,6 +1404,7 @@ function rGoalDetail(){
   const GS={"in-progress":["var(--blue)","In Progress"],"on-track":["#144B2D","On Track"],"needs-attention":["#B8860B","Needs Attention"],"complete":["#9E9E9E","Complete"]};
   const linkedProjs=state.projects.filter(p=>!p.archived&&(p.goalRefs||[]).some(ref=>{const{year:ry,id:rid}=parseGoalRef(ref);return ry===year&&rid===id;}));
   const linkedNotes=notes.filter(n=>(n.goalRefs||[]).some(ref=>{const{year:ry,id:rid}=parseGoalRef(ref);return ry===year&&rid===id;}));
+  const linkedTasks=(state.tasks||[]).filter(t=>(t.goalRefs||[]).some(ref=>{const{year:ry,id:rid}=parseGoalRef(ref);return ry===year&&rid===id;}));
   const [gc,gl]=GS[g.status]||GS["on-track"];
   let h='<div class="card" style="border-top:4px solid var(--blue)"><div class="card-b" style="border:none;padding-top:14px">';
   h+='<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:20px">';
@@ -1445,6 +1458,17 @@ function rGoalDetail(){
       h+='<div style="flex:1"><div style="font-size:12px;font-weight:600;color:#333">'+esc(n.title||'Untitled')+'</div>';
       if(n.notebook)h+='<div style="font-size:10px;color:#aaa">'+esc(n.notebook)+(n.section?' › '+esc(n.section):'')+'</div>';
       h+='</div><span style="font-size:12px;color:#ccc">→</span>';
+      h+='</div>';
+    });
+  }
+  if(linkedTasks.length){
+    h+='<div style="font-size:10px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.5px;padding-bottom:6px;margin-bottom:12px;border-bottom:1px solid #e8edf2;margin-top:20px">Linked Tasks ('+linkedTasks.length+')</div>';
+    linkedTasks.forEach(t=>{
+      h+='<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:4px;background:#f9fafb;margin-bottom:4px">';
+      h+='<span style="font-size:12px;color:'+(t.status==="done"?SC.complete:"#bbb")+'">'+(t.status==="done"?"✓":"○")+'</span>';
+      h+='<div style="flex:1"><div style="font-size:12px;font-weight:600;color:'+(t.status==="done"?"#aaa":"#333")+(t.status==="done"?";text-decoration:line-through":"")+'">'+esc(t.text)+'</div>';
+      if(t.owner)h+='<div style="font-size:10px;color:#aaa">'+esc(t.owner)+'</div>';
+      h+='</div>';
       h+='</div>';
     });
   }
