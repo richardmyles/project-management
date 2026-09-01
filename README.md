@@ -21,7 +21,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 ### Installer (recommended)
 
-1. Download `My Projects Setup 1.0.18.exe`
+1. Download `My Projects Setup 1.0.19.exe`
 2. Run it and follow the prompts
 3. Launch **My Projects** from the Start Menu or desktop shortcut
 
@@ -110,7 +110,7 @@ See `.env.example` in the repository for a full template. `.env` is gitignored �
 
 **Tasks** — standalone task list with tags, project links, goal links, owners, and completion tracking; task text, notes, and owner are directly editable inline. Tasks can be linked to annual goals the same way projects and notes are, and goal-linked tasks appear on the Goal Detail view and in exported reports.
 
-**Notes** — freeform notes, separate from the project journal, with export options (single note, a folder as `.zip`, or all notes as `.zip`), plus an OneNote-style sticky notes panel: jot into an active note, browse previously saved sticky notes stacked below it, and switch between them with one click. Sticky notes are stored under a "Sticky Notes" notebook, so they're also visible from the main Notes list.
+**Notes** — freeform notes organized in an arbitrary-depth folder tree, just like a normal file explorer: create nested folders, drag notes and folders between them (or drop on the root zone to un-file), and drag-reorder siblings — all changes save immediately and persist across reloads. Export options include a single note, a folder (recursively, including sub-folders) as `.zip`, or all notes as `.zip`. Also includes an OneNote-style sticky notes panel: jot into an active note, browse previously saved sticky notes stacked below it, and switch between them with one click. Sticky notes live outside the folder tree, so they're always visible from the main Notes list.
 
 **Profile** — your personal profile, generated and refreshed with AI assistance
 
@@ -167,7 +167,8 @@ data/
 ├── goals/               # Annual goal files
 ├── reports/             # Generated reports (.md and .docx)
 ├── archive/             # Closed project snapshots
-├── notes.json           # Standalone notes (metadata)
+├── notes.json           # Standalone notes (metadata, incl. folderId)
+├── folders.json         # Notes folder tree (id, name, parentId, order)
 ├── notes-html/          # Rich note content, one file per note
 ├── notes-exports/       # Generated note export .zip/.html/.md files
 ├── profile.json         # AI-generated profile

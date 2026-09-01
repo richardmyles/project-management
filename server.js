@@ -23,6 +23,7 @@ const BRIEFING_DIR = path.join(DATA, "briefing");
 const BRIEFING_FILE = path.join(BRIEFING_DIR, "latest.json");
 const RESOLVED_FILE = path.join(BRIEFING_DIR, "resolved.json");
 const NOTES_FILE = path.join(DATA, "notes.json");
+const FOLDERS_FILE = path.join(DATA, "folders.json");
 const PROFILE_FILE = path.join(DATA, "profile.json");
 const NOTES_HTML_DIR = path.join(DATA, "notes-html");
 const NOTES_EXPORT_DIR = path.join(DATA, "notes-exports");
@@ -137,6 +138,81 @@ app.put("/api/config", (req, res) => {
     writeJSON(NOTES_FILE, data);
   }
   fs.unlinkSync(QUICKNOTE_FILE);
+})();
+
+// ═══ FOLDER TREE HELPERS ═══
+function isDescendant(folders, candidateId, ofId) {
+  let cur = folders.find(f => f.id === candidateId);
+  while (cur && cur.parentId) {
+    if (cur.parentId === ofId) return true;
+    cur = folders.find(f => f.id === cur.parentId);
+  }
+  return false;
+}
+// Finds or creates the folder chain for pathSegments under parentId (default root), mutates `folders`, returns leaf folder id.
+function resolveFolderPath(folders, pathSegments, parentId = null) {
+  let curParentId = parentId;
+  for (const rawName of pathSegments) {
+    const name = String(rawName).trim();
+    if (!name) continue;
+    let existing = folders.find(f => f.parentId === curParentId && f.name === name);
+    if (!existing) {
+      const siblingMaxOrder = folders.filter(f => f.parentId === curParentId).reduce((m, f) => Math.max(m, f.order || 0), -1);
+      existing = { id: uid(), name, parentId: curParentId, order: siblingMaxOrder + 1 };
+      folders.push(existing);
+    }
+    curParentId = existing.id;
+  }
+  return curParentId;
+}
+function getFolderPath(folders, folderId) {
+  const parts = [];
+  let cur = folders.find(f => f.id === folderId);
+  while (cur) {
+    parts.unshift(cur.name);
+    cur = cur.parentId ? folders.find(f => f.id === cur.parentId) : null;
+  }
+  return parts;
+}
+function getDescendantFolderIds(folders, folderId) {
+  const ids = [folderId];
+  let frontier = [folderId];
+  while (frontier.length) {
+    const children = folders.filter(f => frontier.includes(f.parentId)).map(f => f.id);
+    ids.push(...children);
+    frontier = children;
+  }
+  return ids;
+}
+
+// ═══ FOLDER MIGRATION (notebook/section strings → folder tree) ═══
+// One-time: converts each note's flat notebook/section strings into a real folder-tree entry
+// (data/folders.json) and points the note at it via folderId, so folders can nest to any depth.
+// Sticky Notes are left untouched — that's a widget invariant, not a place in the filing tree.
+(function migrateNotebookSectionToFolders() {
+  if (!fs.existsSync(FOLDERS_FILE)) writeJSON(FOLDERS_FILE, { folders: [] });
+  const notesData = readJSON(NOTES_FILE, { notes: [] });
+  if (!notesData.notes) notesData.notes = [];
+  if (notesData._migrations && notesData._migrations.notebookSectionToFolders) return;
+
+  const foldersData = readJSON(FOLDERS_FILE, { folders: [] });
+  if (!foldersData.folders) foldersData.folders = [];
+  let notesMigrated = 0;
+  const foldersBefore = foldersData.folders.length;
+
+  notesData.notes.forEach(note => {
+    if (note.notebook === "Sticky Notes") return;
+    const pathSegments = [note.notebook, ...(note.section ? String(note.section).split(" / ") : [])].filter(Boolean);
+    note.folderId = pathSegments.length ? resolveFolderPath(foldersData.folders, pathSegments) : null;
+    delete note.notebook;
+    delete note.section;
+    notesMigrated++;
+  });
+
+  notesData._migrations = { ...(notesData._migrations || {}), notebookSectionToFolders: new Date().toISOString() };
+  writeJSON(FOLDERS_FILE, foldersData);
+  writeJSON(NOTES_FILE, notesData);
+  console.log(`[folders migration] ${notesMigrated} notes migrated, ${foldersData.folders.length - foldersBefore} folders created`);
 })();
 
 // ═══ UNDO/REDO ═══
@@ -1461,10 +1537,11 @@ app.post("/api/profile/generate", async (req, res) => {
     const client = makeAnthropicClient(apiKey);
     const { notes } = readJSON(NOTES_FILE, { notes: [] });
     if (!notes.length) return res.json({ ok: false, error: "No notes to analyze" });
+    const { folders } = readJSON(FOLDERS_FILE, { folders: [] });
 
-    // Build condensed corpus — title + notebook/section + first 250 chars of content
+    // Build condensed corpus — title + folder path + first 250 chars of content
     const corpus = notes.map(n => {
-      const loc = [n.notebook, n.section].filter(Boolean).join(" / ");
+      const loc = getFolderPath(folders, n.folderId).join(" / ");
       const snippet = (n.content || "").replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 250);
       return `[${loc}]\nTitle: ${n.title || "Untitled"}\n${snippet ? "Content: " + snippet : ""}`;
     }).join("\n\n");
@@ -2191,8 +2268,7 @@ app.post("/api/notes", (req, res) => {
   const note = {
     id,
     title: req.body.title || "Untitled",
-    notebook: req.body.notebook || "",
-    section: req.body.section || "",
+    folderId: req.body.folderId || null,
     content: req.body.content || "",
     tags: req.body.tags || [],
     links: req.body.links || [],
@@ -2241,6 +2317,52 @@ app.delete("/api/notes/:id", (req, res) => {
   const htmlFile = path.join(NOTES_HTML_DIR, req.params.id + ".html");
   if (fs.existsSync(htmlFile)) fs.unlinkSync(htmlFile);
   res.json({ ok: true });
+});
+
+// ═══ FOLDERS ═══
+app.get("/api/folders", (req, res) => {
+  const data = readJSON(FOLDERS_FILE, { folders: [] });
+  res.json({ folders: data.folders || [] });
+});
+app.post("/api/folders", (req, res) => {
+  const data = readJSON(FOLDERS_FILE, { folders: [] });
+  if (!data.folders) data.folders = [];
+  const parentId = req.body.parentId || null;
+  const siblingMaxOrder = data.folders.filter(f => f.parentId === parentId).reduce((m, f) => Math.max(m, f.order || 0), -1);
+  const folder = { id: uid(), name: req.body.name || "New folder", parentId, order: siblingMaxOrder + 1 };
+  data.folders.push(folder);
+  writeJSON(FOLDERS_FILE, data);
+  res.json({ ok: true, folder });
+});
+app.patch("/api/folders/:id", (req, res) => {
+  const data = readJSON(FOLDERS_FILE, { folders: [] });
+  const folder = (data.folders || []).find(f => f.id === req.params.id);
+  if (!folder) return res.status(404).json({ error: "Not found" });
+  const { parentId, ...fields } = req.body;
+  if (parentId !== undefined && parentId !== null) {
+    if (parentId === folder.id || isDescendant(data.folders, parentId, folder.id)) {
+      return res.status(400).json({ error: "Cannot move a folder into itself or one of its own descendants" });
+    }
+  }
+  Object.assign(folder, fields);
+  if (parentId !== undefined) folder.parentId = parentId;
+  writeJSON(FOLDERS_FILE, data);
+  res.json({ ok: true, folder });
+});
+app.delete("/api/folders/:id", (req, res) => {
+  const foldersData = readJSON(FOLDERS_FILE, { folders: [] });
+  const notesData = readJSON(NOTES_FILE, { notes: [] });
+  const idsToDelete = new Set(getDescendantFolderIds(foldersData.folders || [], req.params.id));
+  foldersData.folders = (foldersData.folders || []).filter(f => !idsToDelete.has(f.id));
+  const notesToDelete = (notesData.notes || []).filter(n => idsToDelete.has(n.folderId));
+  notesData.notes = (notesData.notes || []).filter(n => !idsToDelete.has(n.folderId));
+  notesToDelete.forEach(n => {
+    const htmlFile = path.join(NOTES_HTML_DIR, n.id + ".html");
+    if (fs.existsSync(htmlFile)) fs.unlinkSync(htmlFile);
+  });
+  writeJSON(FOLDERS_FILE, foldersData);
+  writeJSON(NOTES_FILE, notesData);
+  res.json({ ok: true, deletedFolders: idsToDelete.size, deletedNotes: notesToDelete.length });
 });
 
 // ═══ 1:1 VAULT NOTES ═══
@@ -2327,6 +2449,7 @@ app.post("/api/notes/export-docx", async (req, res) => {
     const data = readJSON(NOTES_FILE, { notes: [] });
     const selected = noteIds.map(id => (data.notes || []).find(n => n.id === id)).filter(Boolean);
     if (!selected.length) return res.status(404).json({ error: "No matching notes" });
+    const { folders } = readJSON(FOLDERS_FILE, { folders: [] });
 
     const docxLib = require("docx");
     const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
@@ -2505,7 +2628,7 @@ app.post("/api/notes/export-docx", async (req, res) => {
     selected.forEach((note, idx) => {
       if (idx > 0) c.push(new Paragraph({ spacing: { before: 320, after: 0 }, border: { top: { style: BorderStyle.SINGLE, size: 4, color: LGRAY } }, children: [new TextRun({ text: "" })] }));
       c.push(new Paragraph({ spacing: { before: 200, after: 40 }, children: [new TextRun({ text: note.title || "Untitled", font: "Times New Roman", size: 26, bold: true, color: DARK })] }));
-      const loc = [note.notebook, note.section].filter(Boolean).join(" › ");
+      const loc = getFolderPath(folders, note.folderId).join(" › ");
       if (loc) c.push(new Paragraph({ spacing: { after: 8 }, children: [new TextRun({ text: loc, font: FONT, size: 16, italics: true, color: GRAY })] }));
       const dt = note.updated || note.created || "";
       if (dt) c.push(new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: dt, font: FONT, size: 14, color: GRAY })] }));
@@ -2574,12 +2697,12 @@ function dedupeExportFilename(used, base, ext) {
   return name + ext;
 }
 // Build the exportable {ext, content} for a single note — rich HTML if present, else plain markdown/text
-function noteExportFile(note) {
+function noteExportFile(note, folders) {
   const htmlFile = path.join(NOTES_HTML_DIR, note.id + ".html");
   const safeTitle = escNoteHtml(note.title || "Untitled");
   if (fs.existsSync(htmlFile)) {
     const body = fs.readFileSync(htmlFile, "utf8");
-    const loc = [note.notebook, note.section].filter(Boolean).join(" › ");
+    const loc = getFolderPath(folders, note.folderId).join(" › ");
     const meta = [loc, note.updated || note.created || ""].filter(Boolean).join(" — ");
     const html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>" + safeTitle + "</title>"
       + "<style>body{font-family:Arial,Helvetica,sans-serif;color:#212121;max-width:800px;margin:40px auto;padding:0 20px;line-height:1.6}"
@@ -2591,18 +2714,18 @@ function noteExportFile(note) {
     return { ext: ".html", content: html };
   }
   const lines = ["# " + (note.title || "Untitled")];
-  const loc = [note.notebook, note.section].filter(Boolean).join(" › ");
+  const loc = getFolderPath(folders, note.folderId).join(" › ");
   if (loc) lines.push("_" + loc + "_");
   if (note.updated || note.created) lines.push("_" + (note.updated || note.created) + "_");
   lines.push("", note.content || "");
   return { ext: ".md", content: lines.join("\n") };
 }
-function buildNotesZip(selectedNotes, prefix) {
+function buildNotesZip(selectedNotes, prefix, folders) {
   const AdmZip = require("adm-zip");
   const zip = new AdmZip();
   const used = new Set();
   selectedNotes.forEach(note => {
-    const { ext, content } = noteExportFile(note);
+    const { ext, content } = noteExportFile(note, folders);
     const filename = dedupeExportFilename(used, sanitizeExportFilename(note.title), ext);
     zip.addFile(filename, Buffer.from(content, "utf8"));
   });
@@ -2616,7 +2739,8 @@ app.get("/api/notes/:id/export", (req, res) => {
     const data = readJSON(NOTES_FILE, { notes: [] });
     const note = (data.notes || []).find(n => n.id === req.params.id);
     if (!note) return res.status(404).json({ error: "Not found" });
-    const { ext, content } = noteExportFile(note);
+    const { folders } = readJSON(FOLDERS_FILE, { folders: [] });
+    const { ext, content } = noteExportFile(note, folders);
     const filename = sanitizeExportFilename(note.title) + ext;
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.type(ext === ".html" ? "text/html" : "text/markdown");
@@ -2634,7 +2758,8 @@ app.post("/api/notes/export-zip", (req, res) => {
     const data = readJSON(NOTES_FILE, { notes: [] });
     const selected = noteIds.map(id => (data.notes || []).find(n => n.id === id)).filter(Boolean);
     if (!selected.length) return res.status(404).json({ error: "No matching notes" });
-    const filename = buildNotesZip(selected, "notes-export");
+    const { folders } = readJSON(FOLDERS_FILE, { folders: [] });
+    const filename = buildNotesZip(selected, "notes-export", folders);
     res.json({ ok: true, filename, downloadUrl: "/api/notes/export-zip-file/" + filename });
   } catch (e) {
     console.error("notes export-zip error:", e);
@@ -2647,7 +2772,8 @@ app.post("/api/notes/export-zip-all", (req, res) => {
     const data = readJSON(NOTES_FILE, { notes: [] });
     const selected = data.notes || [];
     if (!selected.length) return res.status(404).json({ error: "No notes to export" });
-    const filename = buildNotesZip(selected, "notes-export-all");
+    const { folders } = readJSON(FOLDERS_FILE, { folders: [] });
+    const filename = buildNotesZip(selected, "notes-export-all", folders);
     res.json({ ok: true, filename, downloadUrl: "/api/notes/export-zip-file/" + filename });
   } catch (e) {
     console.error("notes export-zip-all error:", e);
@@ -2843,10 +2969,8 @@ app.post("/api/notes/extract", (req, res, next) => getUploadExtract().array("fil
               se.isDirectory && se.entryName.replace(/\\/g, "/").startsWith(folderParts.join("/") + (folderParts.length ? "/" : "") + stem + "_files/")
             );
             if (hasSiblingFilesDir) return;
-            // Derive notebook / section from folder depth
-            // parts[0] = notebook, parts[1..n-1] = section path (joined with " / ")
-            const notebook = folderParts.length >= 1 ? folderParts[0].replace(/_files$/, "").trim() : "";
-            const section  = folderParts.length >= 2 ? folderParts.slice(1).map(p => p.replace(/_files$/, "").trim()).join(" / ") : "";
+            // Keep the full folder path — one segment per nesting level
+            const folderPath = folderParts.map(p => p.replace(/_files$/, "").trim()).filter(Boolean);
             // Embed images — resolve relative src paths against the file's directory
             let html = e.getData().toString("utf8");
             const entryDir = folderParts.join("/");
@@ -2866,7 +2990,7 @@ app.post("/api/notes/extract", (req, res, next) => getUploadExtract().array("fil
               tempId = uid();
               fs.writeFileSync(path.join(NOTES_HTML_DIR, tempId + ".html"), cleanHtml, "utf8");
             }
-            results.push({ filename: stem + ".zip-page", text, tempId, notebook, section });
+            results.push({ filename: stem + ".zip-page", text, tempId, folderPath });
           });
       } else {
         results.push({ filename: name, text: `[Unsupported file type: ${ext}]` });
