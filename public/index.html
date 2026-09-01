@@ -195,6 +195,9 @@ button,input,select,textarea{font-family:var(--fb)}button{cursor:pointer}
 .sec-row{display:flex;align-items:center;gap:6px;padding:4px 12px 4px 28px;cursor:pointer;font-size:11px;}
 .sec-row:hover{background:#faf8f7;}
 .sec-row.on{color:var(--blue);font-weight:700;}
+.nb-row.drag-over{background:#e8f0fe;outline:2px dashed var(--blue);outline-offset:-2px;}
+.nb-row.drag-over-top{box-shadow:inset 0 2px 0 0 var(--blue);}
+.nb-row.drag-over-bottom{box-shadow:inset 0 -2px 0 0 var(--blue);}
 .note-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;padding:12px 0 0 16px;}
 .note-card{background:#fff;border-radius:8px;border:1px solid #eee;padding:12px;cursor:pointer;transition:box-shadow .15s;}
 .note-card:hover{box-shadow:0 2px 8px rgba(0,0,0,.08);}
@@ -244,8 +247,8 @@ let goals={},goalMap={mappings:[]},reports=[],archive=[],hist={undo:0,redo:0};
 let tab="dashboard",exp={},jf="all",expMs={},expTk={},expGoals={};
 let npGoalRefs=[],taskFilter="all",goalYear=new Date().getFullYear(),reportQuarters=new Set(),pgPickerOpen=null,tgPickerOpen=null,goalQSel={};
 let msDrag=null;
-let notes=[],nFilter={nb:null,sec:null},noteSearch="",noteNbOpen={},noteView="notes",noteExportMode=false,noteExportSel=new Set();
-let noteNbOrder=JSON.parse(localStorage.getItem('noteNbOrder')||'[]'),noteSecOrder=JSON.parse(localStorage.getItem('noteSecOrder')||'{}');
+let notes=[],folders=[],nFilter={folderId:null},noteSearch="",folderOpen={},noteView="notes",noteExportMode=false,noteExportSel=new Set();
+let folderDrag=null,nmPendingFolderId=null;
 let profile=null,profileEditMode=false;
 let on1Notes=[];
 let noteEditId=null,noteEditNote=null;
@@ -256,6 +259,10 @@ let memoryContent="";
 let briefingData=null,briefingStatus={status:"idle"},briefingPoll=null,briefingElapsedTick=null;
 let qnMin=localStorage.getItem('qnMin')==='1',activeStickyId=localStorage.getItem('activeStickyId')||null;
 function getStickyNotes(){return notes.filter(n=>n.notebook==="Sticky Notes").sort((a,b)=>(b.updated||"").localeCompare(a.updated||""));}
+function getFolderPath(fldrs,folderId){const path=[];let cur=fldrs.find(f=>f.id===folderId);while(cur){path.unshift(cur.name);cur=fldrs.find(f=>f.id===cur.parentId);}return path;}
+function isDescendant(fldrs,candidateId,ofId){let cur=fldrs.find(f=>f.id===candidateId);while(cur){if(cur.parentId===ofId)return true;cur=fldrs.find(f=>f.id===cur.parentId);}return false;}
+function getDescendantFolderIds(fldrs,folderId){const ids=[folderId];let changed=true;while(changed){changed=false;fldrs.forEach(f=>{if(ids.includes(f.parentId)&&!ids.includes(f.id)){ids.push(f.id);changed=true;}});}return ids;}
+async function resolveFolderPath(pathSegments){let parentId=null;for(const seg of pathSegments){let existing=folders.find(f=>f.parentId===parentId&&f.name===seg);if(!existing){existing=await api("/api/folders",{method:"POST",body:JSON.stringify({name:seg,parentId})});folders.push(existing);}parentId=existing.id;}return parentId;}
 
 async function api(p,o={}){const r=await fetch(p,{headers:{"Content-Type":"application/json"},...o});if(o.raw)return r;return r.json();}
 
@@ -264,6 +271,7 @@ async function load(){
     [state,cfg,goals,goalMap,reports,archive,hist]=await Promise.all([api("/api/state"),api("/api/config"),api("/api/goals"),api("/api/goals/map"),api("/api/reports"),api("/api/archive"),api("/api/history/count")]);
     const memR=await api("/api/memory").catch(()=>({content:""}));memoryContent=memR.content||"";
     notes=await api("/api/notes").catch(()=>[]);
+    folders=(await api("/api/folders").catch(()=>({folders:[]}))).folders||[];
     goalCats=await api("/api/goals/categories/"+goalYear).catch(()=>[]);
     profile=await api("/api/profile").catch(()=>null);
     on1Notes=await api("/api/1on1").catch(()=>[]);
@@ -1699,7 +1707,7 @@ window.rmNote=async id=>{if(!confirm("Delete note?"))return;await api("/api/note
 window.addNoteToMemory=id=>{const n=notes.find(n=>n.id===id);if(!n)return;const addition="\n\n--- NOTE: "+n.title+" ---\n"+n.content;memoryContent+=addition;const ta=document.getElementById("mem-content");if(ta)ta.value=memoryContent;api("/api/memory",{method:"PUT",body:JSON.stringify({content:memoryContent})});toast("Added to AI Memory");};
 window.exportNote=function(id){const n=notes.find(n=>n.id===id)||(noteEditNote&&noteEditNote.id===id?noteEditNote:null);if(!n){toast('Note not found');return;}const ext=n.richContent?'.html':'.md';const fname=(n.title||'Untitled').replace(/[\\/:*?"<>|]/g,'-').trim()+ext;dlFile('/api/notes/'+id+'/export',fname);toast('Exported');};
 window.exportNotesZip=async function(noteIds,busyMsg){if(!noteIds.length){toast('No notes to export');return;}toast(busyMsg||'Building .zip…');try{const r=await api('/api/notes/export-zip',{method:'POST',body:JSON.stringify({noteIds})});if(r.ok){dlFile(r.downloadUrl,r.filename);toast('Downloaded!');}else toast('Error: '+(r.error||'unknown'));}catch(e){toast('Export failed');}};
-window.exportNotesFolder=function(nb,sec){const ids=notes.filter(n=>n.notebook===nb&&(!sec||n.section===sec)).map(n=>n.id);exportNotesZip(ids,'Building folder .zip…');};
+window.exportNotesFolder=function(folderId){const idSet=folderId?new Set(getDescendantFolderIds(folders,folderId)):null;const ids=notes.filter(n=>idSet?idSet.has(n.folderId):n.folderId===null).map(n=>n.id);exportNotesZip(ids,'Building folder .zip…');};
 window.exportAllNotes=async function(){if(!notes.length){toast('No notes to export');return;}toast('Building .zip…');try{const r=await api('/api/notes/export-zip-all',{method:'POST'});if(r.ok){dlFile(r.downloadUrl,r.filename);toast('Downloaded!');}else toast('Error: '+(r.error||'unknown'));}catch(e){toast('Export failed');}};
 window.downloadNotesDocx=async function(){
   const ids=[...noteExportSel];
@@ -1721,25 +1729,23 @@ window.downloadNotesDocx=async function(){
     render();
   }catch(e){toast('Export failed: '+e.message);}
 };
-window.setNoteFilter=(nb,sec)=>{nFilter={nb,sec};render();};
-window.togNoteNb=nb=>{noteNbOpen[nb]=!noteNbOpen[nb];render();};
+window.setNoteFilter=folderId=>{nFilter={folderId};render();};
+window.togFolderOpen=folderId=>{folderOpen[folderId]=!folderOpen[folderId];render();};
 window.setNoteSearch=function(val,pos){noteSearch=val;render();requestAnimationFrame(()=>{const el=document.getElementById('note-srch');if(el){el.focus();try{el.selectionStart=el.selectionEnd=pos;}catch(e){}}});};
-window.moveNb=function(nb,dir){const allNbsRaw=[...new Set(notes.map(n=>n.notebook).filter(Boolean))];allNbsRaw.forEach(n=>{if(!noteNbOrder.includes(n))noteNbOrder.push(n);});const i=noteNbOrder.indexOf(nb);if(i<0)return;const j=i+dir;if(j<0||j>=noteNbOrder.length)return;[noteNbOrder[i],noteNbOrder[j]]=[noteNbOrder[j],noteNbOrder[i]];localStorage.setItem('noteNbOrder',JSON.stringify(noteNbOrder));render();};
-window.moveSec=function(nb,sec,dir){const allSecsList=[...new Set(notes.filter(n=>n.notebook===nb).map(n=>n.section).filter(Boolean))];if(!noteSecOrder[nb])noteSecOrder[nb]=[];allSecsList.forEach(s=>{if(!noteSecOrder[nb].includes(s))noteSecOrder[nb].push(s);});const i=noteSecOrder[nb].indexOf(sec);if(i<0)return;const j=i+dir;if(j<0||j>=noteSecOrder[nb].length)return;[noteSecOrder[nb][i],noteSecOrder[nb][j]]=[noteSecOrder[nb][j],noteSecOrder[nb][i]];localStorage.setItem('noteSecOrder',JSON.stringify(noteSecOrder));render();};
 window.saveNoteEditor=async function(){
   if(window._noteSaving)return;
   window._noteSaving=true;
   try{
     const titleEl=document.getElementById('nm-title');if(!titleEl)return;
     const title=titleEl.value.trim()||'Untitled';
-    const nb=(document.getElementById('nm-nb')?.value||'').trim();
-    const sec=(document.getElementById('nm-sec')?.value||'').trim();
+    const folderSel=document.getElementById('nm-folder')?.value||'';
+    const folderId=folderSel||null;
     const goalRefs=collectAllNmGoalRefs();const projectRefs=mpGetVals('nm-proj');
     const id=noteEditId==='new'?null:noteEditId;
     const hasHtml=!!(noteEditNote?.contentHtml);
     let body;
-    if(window._nmEditMode){const content=document.getElementById('nm-content')?.value||'';body={title,notebook:nb,section:sec,content,contentHtml:'',goalRefs,projectRefs};}
-    else{body={title,notebook:nb,section:sec,goalRefs,projectRefs};if(!hasHtml)body.content=document.getElementById('nm-content')?.value||'';}
+    if(window._nmEditMode){const content=document.getElementById('nm-content')?.value||'';body={title,folderId,content,contentHtml:'',goalRefs,projectRefs};}
+    else{body={title,folderId,goalRefs,projectRefs};if(!hasHtml)body.content=document.getElementById('nm-content')?.value||'';}
     window._nmEditMode=false;
     let r=null;
     if(id){r=await api('/api/notes/'+id,{method:'PATCH',body:JSON.stringify(body)});}
@@ -1757,6 +1763,15 @@ window.saveNoteEditor=async function(){
 window.closeNoteEditor=async function(){
   await saveNoteEditor();
   noteEditId=null;noteEditNote=null;render();
+};
+window.createFolderFromEditor=async function(selectEl){
+  const name=prompt('New folder name:');
+  if(!name||!name.trim()){selectEl.value=nmPendingFolderId||'';render();return;}
+  const parentId=selectEl.value==='__new__'?null:(selectEl.value||null);
+  const created=await api("/api/folders",{method:"POST",body:JSON.stringify({name:name.trim(),parentId})});
+  folders.push(created);
+  nmPendingFolderId=created.id;
+  render();
 };
 function rNmGoalsPicker(yr,goalItems,selected){
   const availYears=Object.keys(goals).map(Number).filter(y=>(goals[y]?.goals||[]).some(g=>g.status!=='discontinued')).sort((a,b)=>b-a);
@@ -1790,11 +1805,10 @@ window.collectAllNmGoalRefs=function(){
 function rNoteEditor(){
   const id=noteEditId==='new'?null:noteEditId;
   const existing=noteEditNote;
-  const nb=existing?.notebook||(nFilter.nb||'');
-  const sec=existing?.section||(nFilter.sec||'');
-  const allNbs=[...new Set(notes.map(n=>n.notebook).filter(Boolean))];
-  const secsByNb={};notes.forEach(n=>{if(n.notebook&&n.section){if(!secsByNb[n.notebook])secsByNb[n.notebook]=new Set();secsByNb[n.notebook].add(n.section);}});
-  const allSecs=nb&&secsByNb[nb]?[...secsByNb[nb]]:[...new Set(notes.map(n=>n.section).filter(Boolean))];
+  const curFolderId=nmPendingFolderId!==null?nmPendingFolderId:(existing?(existing.folderId??null):(nFilter.folderId||null));
+  nmPendingFolderId=null;
+  const flattenFolders=(parentId,depth)=>{const kids=folders.filter(f=>f.parentId===parentId).sort((a,b)=>(a.order||0)-(b.order||0));let out=[];kids.forEach(f=>{out.push({id:f.id,label:'  '.repeat(depth)+f.name});out=out.concat(flattenFolders(f.id,depth+1));});return out;};
+  const folderOptions=flattenFolders(null,0);
   const nmGY=window._nmGoalYear||topGoalYear();
   const allProjs=state.projects.filter(p=>!p.archived);
   const gRefsRaw=existing?.goalRefs||[];
@@ -1809,7 +1823,7 @@ function rNoteEditor(){
   // Top toolbar
   h+='<div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid #f0e0dd;background:#fff;flex-shrink:0;flex-wrap:wrap">';
   h+='<button class="btn sm ol" style="font-size:10px" onclick="closeNoteEditor()">← Back</button>';
-  h+='<span style="font-size:11px;color:#aaa">'+(existing?esc(existing.notebook||'')+' › '+esc(existing.section||''):'New Note')+'</span>';
+  h+='<span style="font-size:11px;color:#aaa">'+(existing?(esc(getFolderPath(folders,existing.folderId).join(' › '))||'Root'):'New Note')+'</span>';
   h+='<div style="flex:1"></div>';
   if(existing){
     h+='<button class="btn sm ol" style="color:var(--gold);border-color:var(--gold);font-size:10px" onclick="toggleNotePin(\''+id+'\')">📌 '+(existing.pinned?'Unpin':'Pin')+'</button>';
@@ -1823,10 +1837,11 @@ function rNoteEditor(){
   // Scrollable body
   h+='<div style="flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:14px">';
   h+='<input id="nm-title" placeholder="Note title" value="'+esc(existing?.title||'')+'" style="font-size:22px;font-weight:700;padding:4px 0;border:none;border-bottom:2px solid #e0e0e0;font-family:var(--fh);outline:none;width:100%;background:transparent">';
-  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-  h+='<div><label style="font-size:10px;color:#888;font-weight:600">NOTEBOOK</label><input id="nm-nb" list="nm-nb-list" value="'+esc(nb)+'" placeholder="e.g. Work" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd"><datalist id="nm-nb-list">'+allNbs.map(n=>'<option value="'+esc(n)+'">').join('')+'</datalist></div>';
-  h+='<div><label style="font-size:10px;color:#888;font-weight:600">SECTION</label><input id="nm-sec" list="nm-sec-list" value="'+esc(sec)+'" placeholder="e.g. LP1 Projects" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd"><datalist id="nm-sec-list">'+allSecs.map(s=>'<option value="'+esc(s)+'">').join('')+'</datalist></div>';
-  h+='</div>';
+  h+='<div><label style="font-size:10px;color:#888;font-weight:600">FOLDER</label><select id="nm-folder" onchange="if(this.value===\'__new__\')createFolderFromEditor(this)" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;padding:6px 8px;border-radius:4px;border:1px solid #ddd">'+
+    '<option value=""'+(curFolderId?'':' selected')+'>(No folder)</option>'+
+    folderOptions.map(f=>'<option value="'+f.id+'"'+(curFolderId===f.id?' selected':'')+'>'+esc(f.label)+'</option>').join('')+
+    '<option value="__new__">+ New folder…</option>'+
+    '</select></div>';
   if(hasHtml){
     h+='<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><label style="font-size:10px;color:#888;font-weight:600">CONTENT</label><button id="nm-edit-btn" class="btn sm ol" style="font-size:9px;padding:2px 7px" onclick="window._nmEditMode=!window._nmEditMode;document.getElementById(\'nm-html-view\').style.display=window._nmEditMode?\'none\':\'block\';document.getElementById(\'nm-content\').style.display=window._nmEditMode?\'block\':\'none\';this.textContent=window._nmEditMode?\'View\':\'Edit text\'">Edit text</button><span style="font-size:9px;color:#aaa">Editing clears rich formatting</span></div>';
     h+='<div id="nm-html-view" style="font-size:13px;border:1px solid #e8e8e8;border-radius:6px;padding:14px;overflow-y:auto;background:#fafafa;line-height:1.7;min-height:300px"></div>';
@@ -1895,8 +1910,8 @@ window.runNoteImport=async function(){
     return;
   }
   // For PowerShell bulk exports: parse "Notebook - Section.mht" from source filename
-  function parseMhtFilename(src){const b=(src||'').replace(/\.mht(ml)?$/i,'');const i=b.indexOf(' - ');return i!==-1?{notebook:b.slice(0,i).trim(),section:b.slice(i+3).trim()}:{notebook:'OneNote',section:b.trim()||'Imported'};}
-  mhtPages.forEach(p=>{if(!p.notebook&&p.sourceFile){const {notebook,section}=parseMhtFilename(p.sourceFile);p.notebook=notebook;p.section=section;}});
+  function parseMhtFilename(src){const b=(src||'').replace(/\.mht(ml)?$/i,'');const i=b.indexOf(' - ');return i!==-1?{folderPath:[b.slice(0,i).trim(),b.slice(i+3).trim()]}:{folderPath:['OneNote',b.trim()||'Imported']};}
+  mhtPages.forEach(p=>{if(!p.folderPath&&p.sourceFile){const {folderPath}=parseMhtFilename(p.sourceFile);p.folderPath=folderPath;}});
   const mhtSources=new Set(mhtPages.map(p=>p.sourceFile).filter(Boolean));
   if(mhtPages.length&&mhtSources.size>1){
     // Multiple .mht files → same tree UI as ZIP
@@ -1915,10 +1930,8 @@ window.runNoteImport=async function(){
     h+='<span style="font-weight:700;font-size:13px;color:var(--blue)">'+mhtPages.length+' pages extracted</span>';
     if(otherFiles.length)h+='<span style="font-size:10px;color:#aaa">+ '+otherFiles.length+' other file(s) — use Claude parse below</span>';
     h+='<div style="flex:1"></div>';
-    h+='<span style="font-size:11px;color:#888;white-space:nowrap">Notebook:</span>';
-    h+='<input id="imp-nb-name" value="'+esc(srcName)+'" style="font-size:11px;padding:4px 8px;border-radius:4px;border:1px solid #ddd;width:140px">';
-    h+='<span style="font-size:11px;color:#888;white-space:nowrap">Section:</span>';
-    h+='<input id="imp-sec-name" value="" placeholder="(optional)" style="font-size:11px;padding:4px 8px;border-radius:4px;border:1px solid #ddd;width:120px">';
+    h+='<span style="font-size:11px;color:#888;white-space:nowrap">Folder:</span>';
+    h+='<input id="imp-folder-path" value="'+esc(srcName)+'" placeholder="Top / Sub / Sub" style="font-size:11px;padding:4px 8px;border-radius:4px;border:1px solid #ddd;width:200px">';
     h+='<label style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" id="mht-sel-all" checked onchange="mhtSelAll(this.checked)"> All</label>';
     h+='</div>';
     h+='<div style="border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;margin-bottom:12px">';
@@ -1956,14 +1969,15 @@ window.mhtSelOne=function(i,checked){if(window._mhtPages&&window._mhtPages[i])wi
 window.saveMhtNotes=async function(){
   const pages=(window._mhtPages||[]).filter(p=>p._sel);
   if(!pages.length)return toast('Select at least one page');
-  const nb=document.getElementById('imp-nb-name')?.value.trim()||'OneNote';
-  const sec=document.getElementById('imp-sec-name')?.value.trim()||'';
+  const pathStr=document.getElementById('imp-folder-path')?.value.trim()||'OneNote';
+  const folderPath=pathStr.split('/').map(s=>s.trim()).filter(Boolean);
+  const folderId=folderPath.length?await resolveFolderPath(folderPath):null;
   const btn=document.getElementById('mht-save-btn');
   if(btn){btn.disabled=true;btn.textContent='Importing…';}
   let saved=0;
   for(const p of pages){
     const title=p.filename.replace(/\.mht-page$/,'');
-    const body={title,notebook:nb,section:sec,content:p.text,goalRefs:[],projectRefs:[]};
+    const body={title,folderId,content:p.text,goalRefs:[],projectRefs:[]};
     if(p.tempId)body.richContentTempId=p.tempId;
     await api('/api/notes',{method:'POST',body:JSON.stringify(body)});
     saved++;
@@ -1977,18 +1991,14 @@ window.saveMhtNotes=async function(){
 window._zipPages=[];window._zipGroups=[];
 window.renderZipUI=function(){
   const out=document.getElementById('imp-out');if(!out)return;
-  // Build notebook→section→pages tree using current page state
   const tree={};
   window._zipPages.forEach((p,i)=>{
-    const nb=p.notebook||'';const sec=p.section||'';
-    const key=nb+'\x00'+sec;
-    if(!tree[key])tree[key]={nb,sec,indices:[]};
+    const path=p.folderPath||[];
+    const key=path.join('\x00');
+    if(!tree[key])tree[key]={path,indices:[]};
     tree[key].indices.push(i);
   });
-  window._zipGroups=Object.values(tree).sort((a,b)=>a.nb.localeCompare(b.nb)||a.sec.localeCompare(b.sec));
-  // Build nb→groups map
-  const nbMap={};
-  window._zipGroups.forEach((g,gid)=>{if(!nbMap[g.nb])nbMap[g.nb]=[];nbMap[g.nb].push({gid,sec:g.sec,indices:g.indices});});
+  window._zipGroups=Object.values(tree).sort((a,b)=>a.path.join(' / ').localeCompare(b.path.join(' / ')));
   const totalSel=window._zipPages.filter(p=>p._sel).length;
   const total=window._zipPages.length;
   let h='<div>';
@@ -1999,63 +2009,52 @@ window.renderZipUI=function(){
   h+='<div style="flex:1"></div>';
   h+='<button class="btn" style="background:var(--blue);padding:7px 18px;font-size:12px" id="zip-save-btn" onclick="saveZipNotes()">&#8595; Import '+totalSel+' Notes</button>';
   h+='</div>';
-  Object.entries(nbMap).sort(([a],[b])=>a.localeCompare(b)).forEach(([nb,groups])=>{
-    const allIdx=groups.flatMap(g=>g.indices);
-    const nbSel=allIdx.filter(i=>window._zipPages[i]._sel).length;
-    const nbGids=groups.map(g=>g.gid);
+  window._zipGroups.forEach((g,gid)=>{
+    const sel=g.indices.filter(i=>window._zipPages[i]._sel).length;
+    const pathStr=g.path.join(' / ');
     h+='<div style="border:1px solid #dde3f0;border-radius:8px;margin-bottom:10px;overflow:hidden">';
     h+='<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:linear-gradient(135deg,#f0f4ff,#e8eeff);border-bottom:1px solid #dde3f0">';
-    h+='<input type="checkbox" '+(nbSel===allIdx.length&&allIdx.length>0?'checked':'')+' onchange="zipSelNb('+JSON.stringify(nbGids)+',this.checked)" style="accent-color:var(--blue);cursor:pointer;width:14px;height:14px;flex-shrink:0">';
-    h+='<span style="font-size:14px;flex-shrink:0">&#128212;</span>';
-    h+='<input data-nbcurrent="'+esc(nb)+'" value="'+esc(nb)+'" placeholder="(No Notebook)" oninput="zipRenameNb(this)" onblur="renderZipUI()" style="font-weight:700;font-size:12px;color:var(--blue);border:none;background:transparent;flex:1;outline:none;min-width:100px;font-family:var(--fh)">';
-    h+='<span style="font-size:10px;color:#8898bb;background:#dde8ff;padding:2px 8px;border-radius:10px;flex-shrink:0">'+nbSel+'/'+allIdx.length+'</span>';
+    h+='<input type="checkbox" '+(sel===g.indices.length&&g.indices.length>0?'checked':'')+' onchange="zipSelGroup('+gid+',this.checked)" style="accent-color:var(--blue);cursor:pointer;width:14px;height:14px;flex-shrink:0">';
+    h+='<span style="font-size:14px;flex-shrink:0">&#128193;</span>';
+    h+='<input data-gid="'+gid+'" data-pathcurrent="'+esc(pathStr)+'" value="'+esc(pathStr)+'" placeholder="(No folder)" oninput="zipRenamePath(this)" onblur="renderZipUI()" style="font-weight:700;font-size:12px;color:var(--blue);border:none;background:transparent;flex:1;outline:none;min-width:100px;font-family:var(--fh)">';
+    h+='<span style="font-size:10px;color:#8898bb;background:#dde8ff;padding:2px 8px;border-radius:10px;flex-shrink:0">'+sel+'/'+g.indices.length+'</span>';
     h+='</div>';
-    groups.sort((a,b)=>a.sec.localeCompare(b.sec)).forEach(({gid,sec,indices})=>{
-      const secSel=indices.filter(i=>window._zipPages[i]._sel).length;
-      h+='<div style="border-bottom:1px solid #f2f2f2;padding:0 12px 0 28px">';
-      h+='<div style="display:flex;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid #f8f8f8">';
-      h+='<input type="checkbox" '+(secSel===indices.length&&indices.length>0?'checked':'')+' onchange="zipSelGroup('+gid+',this.checked)" style="accent-color:var(--blue);cursor:pointer;width:13px;height:13px;flex-shrink:0">';
-      h+='<span style="font-size:11px;flex-shrink:0">&#128193;</span>';
-      if(sec){h+='<input data-gid="'+gid+'" data-seccurrent="'+esc(sec)+'" value="'+esc(sec)+'" oninput="zipRenameSec(this)" onblur="renderZipUI()" style="font-size:11px;font-weight:600;color:#444;border:none;background:transparent;flex:1;outline:none;min-width:80px">';}
-      else{h+='<span style="font-size:11px;color:#bbb;font-style:italic;flex:1">(No section)</span>';}
-      h+='<span style="font-size:10px;color:#ccc;flex-shrink:0">'+indices.length+'</span>';
+    h+='<div style="padding:0 12px 0 28px">';
+    g.indices.forEach(i=>{
+      const p=window._zipPages[i];
+      const title=(p.filename||'').replace(/\.(zip|mht)-page$/,'');
+      const preview=(p.text||'').slice(0,90).replace(/\n/g,' ');
+      h+='<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #fafafa">';
+      h+='<input type="checkbox" '+(p._sel?'checked':'')+' onchange="zipSelOne('+i+',this.checked)" style="accent-color:var(--blue);cursor:pointer;width:12px;height:12px;flex-shrink:0">';
+      h+='<div style="min-width:0;flex:1">';
+      h+='<div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(title)+'</div>';
+      if(preview)h+='<div style="font-size:10px;color:#aaa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(preview)+'</div>';
       h+='</div>';
-      h+='<div style="padding-left:16px">';
-      indices.forEach(i=>{
-        const p=window._zipPages[i];
-        const title=(p.filename||'').replace(/\.(zip|mht)-page$/,'');
-        const preview=(p.text||'').slice(0,90).replace(/\n/g,' ');
-        h+='<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #fafafa">';
-        h+='<input type="checkbox" '+(p._sel?'checked':'')+' onchange="zipSelOne('+i+',this.checked)" style="accent-color:var(--blue);cursor:pointer;width:12px;height:12px;flex-shrink:0">';
-        h+='<div style="min-width:0;flex:1">';
-        h+='<div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(title)+'</div>';
-        if(preview)h+='<div style="font-size:10px;color:#aaa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(preview)+'</div>';
-        h+='</div>';
-        if(p.tempId)h+='<span title="Has images" style="font-size:11px;color:#ccc;flex-shrink:0">&#128444;</span>';
-        h+='</div>';
-      });
-      h+='</div></div>';
+      if(p.tempId)h+='<span title="Has images" style="font-size:11px;color:#ccc;flex-shrink:0">&#128444;</span>';
+      h+='</div>';
     });
-    h+='</div>';
+    h+='</div></div>';
   });
   h+='</div>';
   out.innerHTML=h;
 };
 window.zipSelAll=function(on){window._zipPages.forEach(p=>p._sel=on);renderZipUI();};
-window.zipSelNb=function(gids,on){gids.forEach(gid=>{(window._zipGroups[gid]||{indices:[]}).indices.forEach(i=>window._zipPages[i]._sel=on);});renderZipUI();};
 window.zipSelGroup=function(gid,on){(window._zipGroups[gid]||{indices:[]}).indices.forEach(i=>window._zipPages[i]._sel=on);renderZipUI();};
 window.zipSelOne=function(i,on){if(window._zipPages[i])window._zipPages[i]._sel=on;const s=window._zipPages.filter(p=>p._sel).length;const c=document.getElementById('zip-sel-count');if(c)c.textContent=s;const b=document.getElementById('zip-save-btn');if(b)b.textContent='↓ Import '+s+' Notes';};
-window.zipRenameNb=function(el){const old=el.dataset.nbcurrent;const val=el.value;window._zipPages.forEach(p=>{if(p.notebook===old)p.notebook=val;});el.dataset.nbcurrent=val;};
-window.zipRenameSec=function(el){const gid=+el.dataset.gid;const old=el.dataset.seccurrent;const val=el.value;const g=window._zipGroups[gid];if(g){g.indices.forEach(i=>window._zipPages[i].section=val);g.sec=val;}el.dataset.seccurrent=val;};
+window.zipRenamePath=function(el){const gid=+el.dataset.gid;const val=el.value;const newPath=val.split('/').map(s=>s.trim()).filter(Boolean);const g=window._zipGroups[gid];if(g){g.indices.forEach(i=>window._zipPages[i].folderPath=newPath);g.path=newPath;}el.dataset.pathcurrent=val;};
 window.saveZipNotes=async function(){
   const pages=window._zipPages.filter(p=>p._sel);
   if(!pages.length)return toast('Select at least one page');
   const btn=document.getElementById('zip-save-btn');
   if(btn){btn.disabled=true;btn.textContent='Importing…';}
+  const folderIdCache={};
   let saved=0;
   for(const p of pages){
-    const title=(p.filename||'').replace(/\.zip-page$/,'');
-    const body={title,notebook:p.notebook||'',section:p.section||'',content:p.text,goalRefs:[],projectRefs:[]};
+    const path=p.folderPath||[];
+    const key=path.join('\x00');
+    if(!(key in folderIdCache))folderIdCache[key]=path.length?await resolveFolderPath(path):null;
+    const title=(p.filename||'').replace(/\.(zip|mht)-page$/,'');
+    const body={title,folderId:folderIdCache[key],content:p.text,goalRefs:[],projectRefs:[]};
     if(p.tempId)body.richContentTempId=p.tempId;
     await api('/api/notes',{method:'POST',body:JSON.stringify(body)});
     saved++;if(btn)btn.textContent='Importing… '+saved+'/'+pages.length;
@@ -2071,7 +2070,7 @@ window.runClaudeImport=async function(files,out,append){
   if(append&&out)out.appendChild(statusEl);else if(out)out.innerHTML='';
   if(!append&&out)out.appendChild(statusEl);
   const allParsed=[];
-  const notePrompt=(fname,txt)=>'Parse the following content (from "'+fname+'") into discrete notes. Return ONLY a valid JSON array, no other text.\nEach element: {"title":"...","content":"...","notebook":"...","section":"..."}\nUse the filename and content to suggest appropriate notebook/section groupings.\n\nContent:\n'+txt;
+  const notePrompt=(fname,txt)=>'Parse the following content (from "'+fname+'") into discrete notes. Return ONLY a valid JSON array, no other text.\nEach element: {"title":"...","content":"...","folderPath":["...","..."]}\nfolderPath is an array of nested folder names (root first) suggesting where this note belongs, based on the filename and content — e.g. ["Meeting Notes","2026"]. Use as many segments as appropriate; use [] if no grouping applies.\n\nContent:\n'+txt;
   for(let i=0;i<chunks.length;i++){
     statusEl.textContent='✦ Parsing chunk '+(i+1)+'/'+chunks.length+'…';
     try{const r=await api("/api/claude",{method:"POST",body:JSON.stringify({prompt:notePrompt(chunks[i].filename,chunks[i].text)})});if(r.ok){try{const m=r.text.match(/\[[\s\S]*\]/);const p=JSON.parse(m?m[0]:r.text);allParsed.push(...p);}catch(e){}}}catch(e){}
@@ -2079,25 +2078,34 @@ window.runClaudeImport=async function(files,out,append){
   const seen=new Set();
   const deduped=allParsed.filter(n=>{const k=(n.title||"").toLowerCase().trim();if(seen.has(k))return false;seen.add(k);return true;});
   if(!deduped.length){statusEl.textContent='No notes found in these files.';return;}
+  deduped.forEach(n=>{if(!Array.isArray(n.folderPath))n.folderPath=[];});
   window._importNotes=deduped;
   let ph='<div style="margin-top:4px"><div style="font-size:11px;font-weight:700;color:#444;margin-bottom:8px">'+deduped.length+' notes found — review and save:</div><div style="max-height:360px;overflow-y:auto">';
   deduped.forEach((n,i)=>{
     ph+='<div style="background:#f9f9f9;border:1px solid #eee;border-radius:6px;padding:10px;margin-bottom:8px">';
     ph+='<input data-i="'+i+'" data-f="title" value="'+esc(n.title||"")+'" style="font-weight:600;font-size:12px;width:100%;box-sizing:border-box;border:none;background:transparent;border-bottom:1px solid #eee;margin-bottom:6px;padding:2px 0">';
-    ph+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
-    ph+='<input data-i="'+i+'" data-f="notebook" value="'+esc(n.notebook||"")+'" placeholder="Notebook" style="font-size:11px;padding:3px 6px;border-radius:3px;border:1px solid #ddd">';
-    ph+='<input data-i="'+i+'" data-f="section" value="'+esc(n.section||"")+'" placeholder="Section" style="font-size:11px;padding:3px 6px;border-radius:3px;border:1px solid #ddd">';
-    ph+='</div></div>';
+    ph+='<input data-i="'+i+'" data-f="folderPath" value="'+esc(n.folderPath.join(" / "))+'" placeholder="(No folder) — e.g. Notebook / Section" style="font-size:11px;padding:3px 6px;border-radius:3px;border:1px solid #ddd;width:100%;box-sizing:border-box">';
+    ph+='</div>';
   });
   ph+='</div><div style="display:flex;gap:8px;margin-top:10px;align-items:center"><button class="btn sm" style="background:var(--blue)" onclick="saveImportedNotes()">Save '+deduped.length+' Notes</button><button class="btn sm ol" style="color:#999;border-color:#999" onclick="noteView=\'notes\';render()">Cancel</button></div></div>';
   const resultEl=document.createElement('div');resultEl.innerHTML=ph;
   if(out)out.appendChild(resultEl);
   statusEl.remove();
-  out.querySelectorAll("input[data-i]").forEach(el=>{el.addEventListener("input",()=>{window._importNotes[+el.dataset.i][el.dataset.f]=el.value;});});
+  out.querySelectorAll("input[data-i]").forEach(el=>{el.addEventListener("input",()=>{
+    const n=window._importNotes[+el.dataset.i];
+    if(el.dataset.f==="folderPath")n.folderPath=el.value.split("/").map(s=>s.trim()).filter(Boolean);
+    else n[el.dataset.f]=el.value;
+  });});
 };
 window.saveImportedNotes=async function(){
   const notes_=window._importNotes||[];if(!notes_.length)return;
-  for(const n of notes_){await api("/api/notes",{method:"POST",body:JSON.stringify({title:n.title,notebook:n.notebook,section:n.section,content:n.content,goalRefs:[],projectRefs:[]})});}
+  const folderIdCache={};
+  for(const n of notes_){
+    const path=n.folderPath||[];
+    const key=path.join('\x00');
+    if(!(key in folderIdCache))folderIdCache[key]=path.length?await resolveFolderPath(path):null;
+    await api('/api/notes',{method:"POST",body:JSON.stringify({title:n.title,folderId:folderIdCache[key],content:n.content,goalRefs:[],projectRefs:[]})});
+  }
   window._impFiles=[];window._importNotes=[];
   noteView="notes";await load();toast("Saved "+notes_.length+" notes");
   triggerProfileGenerate(true);
@@ -2106,7 +2114,7 @@ function getPinnedNotesContext(){
   const pinned=notes.filter(n=>n.pinned);
   if(!pinned.length)return"";
   let ctx="\n\nPINNED NOTES:\n";
-  pinned.forEach(n=>{ctx+="\n["+n.notebook+" / "+n.section+"] "+n.title+"\n"+n.content+"\n";});
+  pinned.forEach(n=>{ctx+="\n["+getFolderPath(folders,n.folderId).join(" / ")+"] "+n.title+"\n"+n.content+"\n";});
   return ctx;
 }
 // ═══ PROFILE ═══
@@ -2319,34 +2327,143 @@ function rNoteImport(){
   h+='</div>';
   return h;
 }
+function renderFolderTree(fldrs,allNotes,parentId,depth){
+  let h='';
+  const kids=fldrs.filter(f=>f.parentId===parentId).sort((a,b)=>(a.order||0)-(b.order||0));
+  kids.forEach(f=>{
+    const open=!!folderOpen[f.id];
+    const count=allNotes.filter(n=>n.notebook!=="Sticky Notes"&&n.folderId===f.id).length;
+    const isOn=nFilter.folderId===f.id;
+    const indent=8+depth*14;
+    h+='<div class="nb-row'+(isOn?" on":"")+'" draggable="true" ondragstart="event.stopPropagation();folderDragStart(event,\''+f.id+'\')" ondragover="folderRowDragOver(event)" ondragleave="folderRowDragLeave(event)" ondrop="folderDrop(event,\''+f.id+'\')" style="padding-left:'+indent+'px">';
+    h+='<span onclick="event.stopPropagation();togFolderOpen(\''+f.id+'\')" style="cursor:pointer;flex-shrink:0">'+(open?"▾":"▸")+'</span> ';
+    h+='<span onclick="event.stopPropagation();setNoteFilter(\''+f.id+'\')" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;'+(isOn?"color:var(--blue)":"color:#333")+'">&#128193; '+esc(f.name)+'</span>';
+    h+='<span style="display:flex;align-items:center;gap:2px;flex-shrink:0"><span style="font-size:10px;color:#999;font-weight:400">'+count+'</span><button onclick="event.stopPropagation();renameFolder(\''+f.id+'\')" title="Rename" class="ord-btn">&#9998;</button><button onclick="event.stopPropagation();deleteFolder(\''+f.id+'\')" title="Delete" class="ord-btn">&#128465;</button></span>';
+    h+='</div>';
+    if(open){
+      h+=renderFolderTree(fldrs,allNotes,f.id,depth+1);
+    }
+  });
+  return h;
+}
+window.folderDragStart=(e,id)=>{folderDrag={type:'folder',id};e.dataTransfer.effectAllowed="move";};
+window.noteDragStart=(e,id)=>{folderDrag={type:'note',id};e.dataTransfer.effectAllowed="move";};
+window.folderDropZone=function(e,rowEl){
+  const rect=rowEl.getBoundingClientRect();
+  const y=e.clientY-rect.top;
+  if(y<rect.height*0.25)return'before';
+  if(y>rect.height*0.75)return'after';
+  return'inside';
+};
+window.folderRowDragOver=function(e){
+  e.preventDefault();e.stopPropagation();
+  const zone=folderDropZone(e,e.currentTarget);
+  e.currentTarget.classList.remove('drag-over','drag-over-top','drag-over-bottom');
+  e.currentTarget.classList.add(zone==='before'?'drag-over-top':zone==='after'?'drag-over-bottom':'drag-over');
+};
+window.folderRowDragLeave=function(e){
+  e.currentTarget.classList.remove('drag-over','drag-over-top','drag-over-bottom');
+};
+window.reorderFolderSibling=async(dragId,targetId,zone)=>{
+  const target=folders.find(x=>x.id===targetId);if(!target)return;
+  const newParentId=target.parentId;
+  if(dragId===newParentId||isDescendant(folders,newParentId,dragId))return;
+  const dragFolder=folders.find(x=>x.id===dragId);if(!dragFolder)return;
+  const oldParentId=dragFolder.parentId;
+  const siblings=folders.filter(x=>x.parentId===newParentId&&x.id!==dragId).sort((a,b)=>(a.order||0)-(b.order||0));
+  const targetIdx=siblings.findIndex(x=>x.id===targetId);
+  const insertIdx=zone==='after'?targetIdx+1:targetIdx;
+  siblings.splice(insertIdx,0,dragFolder);
+  dragFolder.parentId=newParentId;
+  const patches=siblings.map((f,i)=>{
+    f.order=i;
+    return api('/api/folders/'+f.id,{method:'PATCH',body:JSON.stringify(f.id===dragId?{parentId:newParentId,order:i}:{order:i})});
+  });
+  await Promise.all(patches);
+  if(oldParentId!==newParentId)folderOpen[newParentId]=true;
+};
+window.folderDrop=async(e,targetId)=>{
+  e.preventDefault();e.stopPropagation();
+  const zone=folderDropZone(e,e.currentTarget);
+  if(e.currentTarget&&e.currentTarget.classList)e.currentTarget.classList.remove('drag-over','drag-over-top','drag-over-bottom');
+  if(!folderDrag)return;
+  const drag=folderDrag;folderDrag=null;
+  if(drag.type==='folder'&&drag.id!==targetId&&zone!=='inside'){
+    await reorderFolderSibling(drag.id,targetId,zone);
+    render();
+    return;
+  }
+  if(drag.type==='folder'){
+    if(drag.id===targetId||isDescendant(folders,targetId,drag.id))return;
+    await api('/api/folders/'+drag.id,{method:'PATCH',body:JSON.stringify({parentId:targetId})});
+    const f=folders.find(x=>x.id===drag.id);if(f)f.parentId=targetId;
+    folderOpen[targetId]=true;
+  } else if(drag.type==='note'){
+    await api('/api/notes/'+drag.id,{method:'PATCH',body:JSON.stringify({folderId:targetId})});
+    const n=notes.find(x=>x.id===drag.id);if(n)n.folderId=targetId;
+    folderOpen[targetId]=true;
+  }
+  render();
+};
+window.folderDropRoot=async(e)=>{
+  e.preventDefault();
+  if(!folderDrag)return;
+  const drag=folderDrag;folderDrag=null;
+  if(drag.type==='folder'){
+    if(folders.find(x=>x.id===drag.id)?.parentId===null)return;
+    await api('/api/folders/'+drag.id,{method:'PATCH',body:JSON.stringify({parentId:null})});
+    const f=folders.find(x=>x.id===drag.id);if(f)f.parentId=null;
+  } else if(drag.type==='note'){
+    await api('/api/notes/'+drag.id,{method:'PATCH',body:JSON.stringify({folderId:null})});
+    const n=notes.find(x=>x.id===drag.id);if(n)n.folderId=null;
+  }
+  render();
+};
+window.renameFolder=async(id)=>{
+  const f=folders.find(x=>x.id===id);if(!f)return;
+  const name=prompt('Rename folder:',f.name);
+  if(!name||!name.trim()||name.trim()===f.name)return;
+  await api('/api/folders/'+id,{method:'PATCH',body:JSON.stringify({name:name.trim()})});
+  f.name=name.trim();
+  render();
+};
+window.deleteFolder=async(id)=>{
+  const descIds=getDescendantFolderIds(folders,id);
+  const subCount=descIds.length-1;
+  const noteCount=notes.filter(n=>descIds.includes(n.folderId)).length;
+  if(!confirm('This will permanently delete '+subCount+' subfolder'+(subCount!==1?'s':'')+' and '+noteCount+' note'+(noteCount!==1?'s':'')+'. Continue?'))return;
+  await api('/api/folders/'+id,{method:'DELETE'});
+  folders=folders.filter(f=>!descIds.includes(f.id));
+  notes=notes.filter(n=>!descIds.includes(n.folderId));
+  if(nFilter.folderId&&descIds.includes(nFilter.folderId))nFilter={};
+  render();
+};
+window.newRootFolder=async()=>{
+  const name=prompt('New folder name:');
+  if(!name||!name.trim())return;
+  const created=await api('/api/folders',{method:'POST',body:JSON.stringify({name:name.trim(),parentId:null})});
+  folders.push(created);
+  render();
+};
+window.setStickyFilter=()=>{nFilter={sticky:true};render();};
 function rNotes(){
-  const allNbsRaw=[...new Set(notes.map(n=>n.notebook).filter(Boolean))];
-  const secsByNb={};notes.forEach(n=>{if(n.notebook&&n.section){if(!secsByNb[n.notebook])secsByNb[n.notebook]=[];if(!secsByNb[n.notebook].includes(n.section))secsByNb[n.notebook].push(n.section);}});
-  allNbsRaw.forEach(n=>{if(!noteNbOrder.includes(n))noteNbOrder.push(n);});
-  const allNbs=noteNbOrder.filter(n=>allNbsRaw.includes(n));
-  Object.keys(secsByNb).forEach(nb=>{if(!noteSecOrder[nb])noteSecOrder[nb]=[];secsByNb[nb].forEach(s=>{if(!noteSecOrder[nb].includes(s))noteSecOrder[nb].push(s);});});
-
   let h='<div class="card" style="border-top:4px solid #5B4FCF;padding:0"><div class="card-b" style="padding:0">';
   h+='<div class="notes-layout">';
 
   // Sidebar
+  const stickyCount=notes.filter(n=>n.notebook==="Sticky Notes").length;
+  const allCount=notes.length-stickyCount;
+  const unfiledCount=notes.filter(n=>n.notebook!=="Sticky Notes"&&(n.folderId===null||n.folderId===undefined)).length;
+  const allOn=nFilter.folderId===undefined&&!nFilter.sticky;
   h+='<div class="notes-sidebar">';
-  h+='<div class="nb-row'+((!nFilter.nb&&!nFilter.sec)?" on":"")+'" onclick="setNoteFilter(null,null)" style="'+((!nFilter.nb&&!nFilter.sec)?"color:var(--blue)":"color:#333")+'">&#128196; All Notes <span style="margin-left:auto;font-size:10px;color:#999;font-weight:400">'+notes.length+'</span></div>';
-  allNbs.forEach(nb=>{
-    const nbCount=notes.filter(n=>n.notebook===nb).length;
-    const open=noteNbOpen[nb];
-    const nbE=nb.replace(/'/g,"\\'");
-    h+='<div class="nb-row'+(nFilter.nb===nb&&!nFilter.sec?" on":"")+'" onclick="event.stopPropagation();togNoteNb(\''+nbE+'\')">'+(open?"▾":"▸")+' <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(nb)+'</span><span style="display:flex;align-items:center;gap:2px;flex-shrink:0"><span style="font-size:10px;color:#999;font-weight:400">'+nbCount+'</span><button onclick="event.stopPropagation();moveNb(\''+nbE+'\', -1)" title="Move up" class="ord-btn">▲</button><button onclick="event.stopPropagation();moveNb(\''+nbE+'\', 1)" title="Move down" class="ord-btn">▼</button></span></div>';
-    if(open){
-      const ordSecs=(noteSecOrder[nb]||[]).filter(s=>secsByNb[nb]?.includes(s));
-      ordSecs.forEach(sec=>{
-        const secCount=notes.filter(n=>n.notebook===nb&&n.section===sec).length;
-        const secE=sec.replace(/'/g,"\\'");
-        h+='<div class="sec-row'+(nFilter.nb===nb&&nFilter.sec===sec?" on":"")+'" onclick="event.stopPropagation();setNoteFilter(\''+nbE+'\',\''+secE+'\')"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(sec)+'</span><span style="display:flex;align-items:center;gap:2px;flex-shrink:0"><span style="font-size:10px;color:#999">'+secCount+'</span><button onclick="event.stopPropagation();moveSec(\''+nbE+'\',\''+secE+'\', -1)" title="Move up" class="ord-btn">▲</button><button onclick="event.stopPropagation();moveSec(\''+nbE+'\',\''+secE+'\', 1)" title="Move down" class="ord-btn">▼</button></span></div>';
-      });
-    }
-  });
+  h+='<div class="nb-row'+(allOn?" on":"")+'" onclick="setNoteFilter()" style="'+(allOn?"color:var(--blue)":"color:#333")+'">&#128196; All Notes <span style="margin-left:auto;font-size:10px;color:#999;font-weight:400">'+allCount+'</span></div>';
+  h+=renderFolderTree(folders,notes,null,0);
+  h+='<div class="nb-row'+(nFilter.folderId===null?" on":"")+'" ondragover="event.preventDefault()" ondrop="folderDropRoot(event)" onclick="setNoteFilter(null)" style="'+(nFilter.folderId===null?"color:var(--blue)":"color:#333")+'">&#128194; Unfiled <span style="margin-left:auto;font-size:10px;color:#999;font-weight:400">'+unfiledCount+'</span></div>';
+  if(stickyCount>0){
+    h+='<div class="nb-row'+(nFilter.sticky?" on":"")+'" onclick="setStickyFilter()" style="'+(nFilter.sticky?"color:var(--blue)":"color:#333")+'">&#128204; Sticky Notes <span style="margin-left:auto;font-size:10px;color:#999;font-weight:400">'+stickyCount+'</span></div>';
+  }
   h+='<div style="padding:8px 12px;margin-top:8px;display:flex;flex-direction:column;gap:6px">';
+  h+='<button class="btn sm ol" style="font-size:10px;width:100%" onclick="newRootFolder()">+ New Folder</button>';
   h+='<button class="btn sm ol" style="font-size:10px;width:100%" onclick="openNoteModal(null)">+ New Note</button>';
   h+='<button class="btn sm ol" style="font-size:10px;width:100%;color:var(--blue);border-color:var(--blue)" onclick="window._impFiles=[];noteView=\'import\';render()">&#11019; Import Notes</button>';
   h+='<button class="btn sm ol" style="font-size:10px;width:100%;color:#5B4FCF;border-color:#5B4FCF" onclick="scanState=\'idle\';noteView=\'scan\';render()">&#10022; Scan with Claude</button>';
@@ -2367,8 +2484,9 @@ function rNotes(){
   } else {
     const ns=noteSearch.toLowerCase();
     let visible=notes.filter(n=>{
-      if(nFilter.nb&&n.notebook!==nFilter.nb)return false;
-      if(nFilter.sec&&n.section!==nFilter.sec)return false;
+      if(nFilter.sticky)return n.notebook==="Sticky Notes";
+      if(n.notebook==="Sticky Notes")return false;
+      if(nFilter.folderId!==undefined&&(n.folderId||null)!==nFilter.folderId)return false;
       if(ns&&!(n.title.toLowerCase().includes(ns)||n.content.toLowerCase().includes(ns)))return false;
       return true;
     }).sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0));
@@ -2385,7 +2503,15 @@ function rNotes(){
       h+='<button class="btn sm" style="background:var(--green);font-size:10px" '+(selN===0?'disabled':'')+' onclick="downloadNotesDocx()">&#8659; Download '+selN+' Note'+(selN!==1?'s':'')+' as .docx</button>';
     }else{
       h+='<div style="font-family:var(--fh);font-size:15px;font-weight:700;color:#5B4FCF">Notes</div>';
-      if(nFilter.nb){h+='<span style="font-size:11px;color:#666">'+esc(nFilter.nb)+(nFilter.sec?' › '+esc(nFilter.sec):"")+'</span>';h+='<button class="btn sm ol" style="font-size:10px;color:#888;border-color:#ccc" onclick="exportNotesFolder(\''+nFilter.nb.replace(/'/g,"\\'")+'\','+(nFilter.sec?'\''+nFilter.sec.replace(/'/g,"\\'")+'\'':'null')+')">&#8659; Export Folder</button>';}
+      if(nFilter.sticky){
+        h+='<span style="font-size:11px;color:#666">Sticky Notes</span>';
+      } else if(nFilter.folderId){
+        const pathStr=getFolderPath(folders,nFilter.folderId).join(' › ');
+        h+='<span style="font-size:11px;color:#666">'+esc(pathStr)+'</span>';
+        h+='<button class="btn sm ol" style="font-size:10px;color:#888;border-color:#ccc" onclick="exportNotesFolder(\''+nFilter.folderId+'\')">&#8659; Export Folder</button>';
+      } else if(nFilter.folderId===null){
+        h+='<span style="font-size:11px;color:#666">Unfiled</span>';
+      }
       h+='<div style="flex:1"></div>';
       h+='<input id="note-srch" placeholder="Search notes…" value="'+esc(noteSearch)+'" oninput="setNoteSearch(this.value,this.selectionStart)" style="font-size:11px;padding:5px 10px;border-radius:14px;border:1px solid #ddd;width:160px">';
       h+='<button class="btn sm ol" style="font-size:10px" onclick="window._impFiles=[];noteView=\'import\';render()">&#11019; Import</button>';
@@ -2397,7 +2523,7 @@ function rNotes(){
     }else{
       h+='<div class="note-grid">';
       visible.forEach(n=>{
-        const nb=n.notebook||"—",sec=n.section||"—";
+        const crumb=n.notebook==="Sticky Notes"?"Sticky Notes":(getFolderPath(folders,n.folderId).join(' › ')||"Unfiled");
         const rawContent=n.content||"";
         const preview=rawContent.replace(/<[^>]+>/g," ").replace(/\s{2,}/g," ").slice(0,120).replace(/\n/g," ");
         const gNames=(n.goalRefs||[]).map(ref=>{const{year,id}=parseGoalRef(ref);const g=(goals[year]?.goals||[]).find(gg=>gg.id===id);return g?(g.text||"").slice(0,30):null;}).filter(Boolean);
@@ -2406,7 +2532,8 @@ function rNotes(){
         const cardClick=noteExportMode
           ?'noteExportSel.has(\''+n.id+'\')?noteExportSel.delete(\''+n.id+'\'):noteExportSel.add(\''+n.id+'\');render()'
           :'openNoteModal(\''+n.id+'\')';
-        h+='<div class="note-card'+(n.pinned?" pinned":""+(isSelExp?" selected-exp":""))+'" onclick="'+cardClick+'" style="'+(isSelExp?'outline:2px solid var(--green);background:#f0faf4':'')+'position:relative">';
+        const canDrag=!noteExportMode&&n.notebook!=="Sticky Notes";
+        h+='<div class="note-card'+(n.pinned?" pinned":""+(isSelExp?" selected-exp":""))+'" onclick="'+cardClick+'"'+(canDrag?' draggable="true" ondragstart="noteDragStart(event,\''+n.id+'\')"':'')+' style="'+(isSelExp?'outline:2px solid var(--green);background:#f0faf4':'')+'position:relative">';
         if(noteExportMode){
           h+='<div style="position:absolute;top:8px;right:8px;z-index:2"><input type="checkbox" '+(isSelExp?'checked':'')+' onclick="event.stopPropagation();noteExportSel.has(\''+n.id+'\')?noteExportSel.delete(\''+n.id+'\'):noteExportSel.add(\''+n.id+'\');render()" style="width:15px;height:15px;accent-color:var(--green)"></div>';
         }
@@ -2418,7 +2545,7 @@ function rNotes(){
           h+='<button onclick="event.stopPropagation();rmNote(\''+n.id+'\')" style="background:none;border:none;cursor:pointer;color:#999;font-size:14px;padding:0;line-height:1" title="Delete">×</button>';
         }
         h+='</div>';
-        h+='<div style="font-size:10px;color:#aaa;margin-bottom:6px">'+esc(nb)+' › '+esc(sec)+'&nbsp;&nbsp;&nbsp;'+esc(n.updated||n.created||"")+'</div>';
+        h+='<div style="font-size:10px;color:#aaa;margin-bottom:6px">'+esc(crumb)+'&nbsp;&nbsp;&nbsp;'+esc(n.updated||n.created||"")+'</div>';
         if(preview)h+='<div style="font-size:11px;color:#666;line-height:1.5;margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+esc(preview)+'</div>';
         if(gNames.length||pNames.length){h+='<div style="font-size:10px;color:#888;margin-bottom:6px">';gNames.forEach(g=>{h+='<span style="margin-right:6px">&#9679; '+esc(g)+'</span>';});pNames.forEach(p=>{h+='<span style="margin-right:6px">&#9671; '+esc(p)+'</span>';});h+='</div>';}
         if(!noteExportMode){
