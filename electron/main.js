@@ -178,6 +178,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      spellcheck: true,
       zoomFactor: 1.12,
     },
     show: true,
@@ -200,6 +201,42 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
+  });
+
+  mainWindow.webContents.on("context-menu", (event, params) => {
+    const menuItems = [];
+    if (params.misspelledWord) {
+      params.dictionarySuggestions.forEach(suggestion => {
+        menuItems.push({
+          label: suggestion,
+          click: () => mainWindow.webContents.replaceMisspelling(suggestion),
+        });
+      });
+      if (!params.dictionarySuggestions.length) {
+        menuItems.push({ label: "No suggestions", enabled: false });
+      }
+      menuItems.push({ type: "separator" });
+      menuItems.push({
+        label: "Add to Dictionary",
+        click: () => mainWindow.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord),
+      });
+      menuItems.push({ type: "separator" });
+    }
+    if (params.isEditable) {
+      menuItems.push({ label: "Undo", role: "undo", enabled: params.editFlags.canUndo });
+      menuItems.push({ label: "Redo", role: "redo", enabled: params.editFlags.canRedo });
+      menuItems.push({ type: "separator" });
+      menuItems.push({ label: "Cut", role: "cut", enabled: params.editFlags.canCut });
+      menuItems.push({ label: "Copy", role: "copy", enabled: params.editFlags.canCopy });
+      menuItems.push({ label: "Paste", role: "paste", enabled: params.editFlags.canPaste });
+      menuItems.push({ type: "separator" });
+      menuItems.push({ label: "Select All", role: "selectAll", enabled: params.editFlags.canSelectAll });
+    } else if (params.selectionText) {
+      menuItems.push({ label: "Copy", role: "copy" });
+    }
+    if (menuItems.length) {
+      Menu.buildFromTemplate(menuItems).popup();
+    }
   });
 }
 

@@ -220,7 +220,13 @@ button,input,select,textarea{font-family:var(--fb)}button{cursor:pointer}
 .imp-dropzone{border:2px dashed #ddd;border-radius:8px;padding:32px 20px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;}
 .imp-dropzone:hover,.imp-dropzone.drag{border-color:var(--blue);background:#f5f8ff;}
 .imp-file-row{display:flex;align-items:center;gap:8px;background:#f5f7fa;border-radius:4px;padding:5px 10px;font-size:11px;margin-top:4px;}
+#nm-quill .ql-editor{min-height:300px;font-size:13px;line-height:1.7;font-family:var(--fb)}
+#nm-quill .ql-toolbar{border-radius:6px 6px 0 0;border-color:#e0e0e0}
+#nm-quill .ql-container{border-radius:0 0 6px 6px;border-color:#e0e0e0}
 </style>
+<link rel="stylesheet" href="/vendor/quill/quill.snow.css">
+<script src="/vendor/quill/quill.js"></script>
+<script src="/vendor/dompurify/purify.min.js"></script>
 </head>
 <body>
 <div id="app"><div style="display:flex;justify-content:center;align-items:center;height:100vh;color:#888">Loading…</div></div>
@@ -316,7 +322,7 @@ document.addEventListener("click",e=>{if(!e.target.closest(".hdr-search")&&!e.ta
 
 window.doUndo=async()=>{const r=await api("/api/undo",{method:"POST"});if(r.ok){toast("Undone");await load();}};
 window.doRedo=async()=>{const r=await api("/api/redo",{method:"POST"});if(r.ok){toast("Redone");await load();}};
-window.setTab=t=>{tab=t;render()};
+window.setTab=t=>{if(t!=='notes'&&noteEditId){_nmSaveForm();window._nmQuill=null;}tab=t;render()};
 window.tog=id=>{exp[id]=!exp[id];render()};
 window.setJF=f=>{jf=f;render()};
 
@@ -343,7 +349,7 @@ function ds(){debounce('__state-save__',()=>save(),600);}
 // Re-render only when no input/textarea/select has focus — prevents wiping mid-type text
 // If focused, mark as pending — next explicit render() or save() will pick it up
 let _renderPending=false;
-function safeRender(){const ae=document.activeElement;const isTypingField=ae&&((ae.tagName==='INPUT'&&!['checkbox','radio'].includes(ae.type))||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT');if(isTypingField){_renderPending=true;return;}render();}
+function safeRender(){const ae=document.activeElement;const isTypingField=ae&&((ae.tagName==='INPUT'&&!['checkbox','radio'].includes(ae.type))||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT');if(isTypingField||noteEditId){_renderPending=true;return;}render();}
 // Check for pending render after any blur (catches the deferred case)
 document.addEventListener('focusout',()=>{if(_renderPending){_renderPending=false;setTimeout(()=>{const ae=document.activeElement;if(!ae||!['INPUT','TEXTAREA','SELECT'].includes(ae.tagName))render();},50);}});
 // Full re-renders replace .app innerHTML, which resets any scrollable container's scrollTop —
@@ -767,6 +773,7 @@ function render(){
   document.getElementById("app").innerHTML=h;
   // Restore task form state after DOM rebuild
   if(tab==="tasks")_tkRestoreForm();
+  if(tab==="notes"&&noteEditId)_nmRestoreForm();
 }
 
 // ═══ DASHBOARD ═══
@@ -1085,7 +1092,7 @@ window.editScanItem=(id,type,val)=>{const arr=scanSuggestions?(scanSuggestions[t
 window.editScanProject=(id,type,val)=>{const arr=scanSuggestions?(scanSuggestions[type]||[]):[];const item=arr.find(i=>i._uid===id);if(item)item.projectRef=val.startsWith('__new__')?val.replace('__new__',''):val;};
 window.scanReset=()=>{scanState='idle';scanSuggestions=null;scanSelected={};scanNoteTitle='';noteView='notes';render();};
 window.scanNote=async function(id){
-  if(noteEditId){await saveNoteEditor();noteEditId=null;noteEditNote=null;}
+  if(noteEditId){await saveNoteEditor();window._nmQuill=null;_nmSavedHtml=null;noteEditId=null;noteEditNote=null;}
   scanNoteTitle='';noteView='scan';scanState='processing';render();
   try{
     const r=await fetch('/api/scan/note/'+id,{method:'POST'});
@@ -1742,18 +1749,20 @@ window.saveNoteEditor=async function(){
     const folderId=folderSel||null;
     const goalRefs=collectAllNmGoalRefs();const projectRefs=mpGetVals('nm-proj');
     const id=noteEditId==='new'?null:noteEditId;
-    const hasHtml=!!(noteEditNote?.contentHtml);
-    let body;
-    if(window._nmEditMode){const content=document.getElementById('nm-content')?.value||'';body={title,folderId,content,contentHtml:'',goalRefs,projectRefs};}
-    else{body={title,folderId,goalRefs,projectRefs};if(!hasHtml)body.content=document.getElementById('nm-content')?.value||'';}
-    window._nmEditMode=false;
+    let content='';let contentHtml='';
+    if(window._nmQuill){
+      const rawHtml=window._nmQuill.root.innerHTML;
+      contentHtml=DOMPurify.sanitize(rawHtml);
+      content=window._nmQuill.getText().trim();
+    }
+    const body={title,folderId,content,contentHtml,goalRefs,projectRefs};
     let r=null;
     if(id){r=await api('/api/notes/'+id,{method:'PATCH',body:JSON.stringify(body)});}
-    else if(title!=='Untitled'||body.content){r=await api('/api/notes',{method:'POST',body:JSON.stringify({...body,content:document.getElementById('nm-content')?.value||''})});}
+    else if(title!=='Untitled'||content){r=await api('/api/notes',{method:'POST',body:JSON.stringify(body)});}
     if(r?.ok&&r.note){
       if(noteEditId==='new')noteEditId=r.note.id;
       if(noteEditId===r.note.id)noteEditNote=r.note;
-      const{contentHtml,...meta}=r.note;
+      const{contentHtml:_,...meta}=r.note;
       const idx=notes.findIndex(n=>n.id===r.note.id);
       if(idx>=0)notes[idx]={...notes[idx],...meta};else notes.push(meta);
     }
@@ -1762,6 +1771,7 @@ window.saveNoteEditor=async function(){
 };
 window.closeNoteEditor=async function(){
   await saveNoteEditor();
+  window._nmQuill=null;_nmSavedHtml=null;
   noteEditId=null;noteEditNote=null;render();
 };
 window.createFolderFromEditor=async function(selectEl){
@@ -1802,6 +1812,15 @@ window.collectAllNmGoalRefs=function(){
   Object.entries(cache).forEach(([yr,refs])=>{if(parseInt(yr)!==cur)refs.forEach(r=>result.add(r));});
   return [...result];
 };
+window._nmQuill=null;
+let _nmSavedHtml=null;
+function _nmSaveForm(){if(window._nmQuill){_nmSavedHtml=window._nmQuill.root.innerHTML;}}
+function _nmRestoreForm(){if(noteEditId&&tab==='notes'&&_nmSavedHtml!==null){requestAnimationFrame(()=>{_nmInitQuill();if(window._nmQuill)window._nmQuill.root.innerHTML=_nmSavedHtml;_nmSavedHtml=null;});}}
+function _nmInitQuill(){
+  const el=document.getElementById('nm-quill');
+  if(!el||window._nmQuill)return;
+  window._nmQuill=new Quill('#nm-quill',{theme:'snow',modules:{toolbar:[[{header:[1,2,3,false]}],['bold','italic','underline','strike'],['blockquote','code-block'],[{list:'ordered'},{list:'bullet'}],['link'],['clean']]}});
+}
 function rNoteEditor(){
   const id=noteEditId==='new'?null:noteEditId;
   const existing=noteEditNote;
@@ -1818,7 +1837,6 @@ function rNoteEditor(){
   const goalItems=yrGoals.map(g=>{const cat=(g.category||'').split(/[–—-]/).pop().trim();return{val:makeGoalRef(g.id,nmGY),label:(cat?cat+' — ':'')+( g.text||'').slice(0,55)};});
   const curYrGRefs=gRefs.filter(ref=>parseGoalRef(ref).year===nmGY);
   const projItems=allProjs.map(p=>({val:p.id,label:p.shortName+' — '+p.name}));
-  const hasHtml=!!(existing?.contentHtml);
   let h='<div style="display:flex;flex-direction:column;height:100%;overflow:hidden">';
   // Top toolbar
   h+='<div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid #f0e0dd;background:#fff;flex-shrink:0;flex-wrap:wrap">';
@@ -1842,13 +1860,7 @@ function rNoteEditor(){
     folderOptions.map(f=>'<option value="'+f.id+'"'+(curFolderId===f.id?' selected':'')+'>'+esc(f.label)+'</option>').join('')+
     '<option value="__new__">+ New folder…</option>'+
     '</select></div>';
-  if(hasHtml){
-    h+='<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><label style="font-size:10px;color:#888;font-weight:600">CONTENT</label><button id="nm-edit-btn" class="btn sm ol" style="font-size:9px;padding:2px 7px" onclick="window._nmEditMode=!window._nmEditMode;document.getElementById(\'nm-html-view\').style.display=window._nmEditMode?\'none\':\'block\';document.getElementById(\'nm-content\').style.display=window._nmEditMode?\'block\':\'none\';this.textContent=window._nmEditMode?\'View\':\'Edit text\'">Edit text</button><span style="font-size:9px;color:#aaa">Editing clears rich formatting</span></div>';
-    h+='<div id="nm-html-view" style="font-size:13px;border:1px solid #e8e8e8;border-radius:6px;padding:14px;overflow-y:auto;background:#fafafa;line-height:1.7;min-height:300px"></div>';
-    h+='<textarea id="nm-content" rows="20" placeholder="Note content..." style="display:none;font-size:13px;padding:10px 12px;border-radius:6px;border:1px solid #ddd;resize:vertical;line-height:1.7;width:100%;box-sizing:border-box">'+esc(existing?.content||'')+'</textarea></div>';
-  }else{
-    h+='<div><label style="font-size:10px;color:#888;font-weight:600">CONTENT</label><textarea id="nm-content" rows="20" placeholder="Note content..." style="display:block;margin-top:4px;font-size:13px;padding:10px 12px;border-radius:6px;border:1px solid #ddd;resize:vertical;line-height:1.7;width:100%;box-sizing:border-box">'+esc(existing?.content||'')+'</textarea></div>';
-  }
+  h+='<div><label style="font-size:10px;color:#888;font-weight:600">CONTENT</label><div id="nm-quill" style="min-height:300px;background:#fff;margin-top:4px"></div></div>';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
   h+='<div><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:4px">GOALS</label><div id="nm-goals-container">'+rNmGoalsPicker(nmGY,goalItems,curYrGRefs)+'</div></div>';
   h+='<div><label style="font-size:10px;color:#888;font-weight:600;display:block;margin-bottom:4px">PROJECTS</label>'+buildPicker('nm-proj',projItems,pRefs,'No projects linked')+'</div>';
@@ -1858,7 +1870,7 @@ function rNoteEditor(){
 }
 window.openNoteModal=async function(id){
   noteEditId=id||'new';
-  window._nmEditMode=false;
+  window._nmQuill=null;
   window._nmGoalYear=null;window._nmGoalYearSel={};
   if(id){
     const r=await api('/api/notes/'+id).catch(()=>null);
@@ -1869,7 +1881,17 @@ window.openNoteModal=async function(id){
     gRefs.forEach(ref=>{const{year}=parseGoalRef(ref);if(year!==curYr){if(!window._nmGoalYearSel[year])window._nmGoalYearSel[year]=[];window._nmGoalYearSel[year].push(ref);}});
   } else {noteEditNote=null;}
   setTab('notes');render();
-  if(noteEditNote?.contentHtml){requestAnimationFrame(()=>{const v=document.getElementById('nm-html-view');if(v)v.innerHTML=noteEditNote.contentHtml;});}
+  requestAnimationFrame(()=>{
+    _nmInitQuill();
+    if(window._nmQuill){
+      if(noteEditNote?.contentHtml){
+        const clean=DOMPurify.sanitize(noteEditNote.contentHtml);
+        window._nmQuill.root.innerHTML=clean;
+      }else if(noteEditNote?.content){
+        window._nmQuill.setText(noteEditNote.content);
+      }
+    }
+  });
 };
 window._impFiles=[];
 window.impAddFiles=function(newFiles){
