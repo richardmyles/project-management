@@ -1,7 +1,17 @@
-try { require("dotenv").config(); } catch (_) { /* dotenv is optional in packaged builds */ }
+const path = require("path");
+// Load .env from the directory containing server.js (not process.cwd(), which
+// can differ inside Electron or when the app is launched from a shortcut).
+// Also try the data root set by Electron's main process — installed builds store
+// user data in %AppData%/my-projects and have no .env next to the source files.
+try {
+  const dotenv = require("dotenv");
+  dotenv.config({ path: path.join(__dirname, ".env") });
+  if (process.env.APP_DATA_PATH && process.env.APP_DATA_PATH !== __dirname) {
+    dotenv.config({ path: path.join(process.env.APP_DATA_PATH, ".env") });
+  }
+} catch (_) { /* dotenv is optional in packaged builds */ }
 const express = require("express");
 const fs = require("fs");
-const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 3201;

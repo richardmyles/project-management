@@ -265,6 +265,16 @@ if (!gotLock) {
     process.env.APP_DATA_PATH = dataRoot;
     process.env.ELECTRON_APP = "1";
 
+    // For installed builds the first dotenv call (line 7) finds no .env inside
+    // the asar archive.  Try again from the persistent data root so users can
+    // place a .env in %AppData%/my-projects and have it picked up on every
+    // launch — surviving auto-updates that replace the app directory.
+    // dotenv.config() never overwrites vars that are already set, so for dev
+    // copies where line 7 already loaded .env this is a safe no-op.
+    if (dataRoot !== path.join(__dirname, "..")) {
+      try { require("dotenv").config({ path: path.join(dataRoot, ".env") }); } catch (_) {}
+    }
+
     createTray();
     createWindow();
     setupAutoUpdater();
