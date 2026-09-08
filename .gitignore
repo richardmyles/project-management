@@ -16,6 +16,9 @@ uploads/
 # Claude Code local settings
 .claude/
 
+# Playwright MCP test artifacts
+.playwright-mcp/
+
 # OS / editor
 .DS_Store
 Thumbs.db

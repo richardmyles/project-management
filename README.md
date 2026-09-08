@@ -12,7 +12,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 | File | When to use |
 |------|-------------|
-| `My Projects Setup 1.0.20.exe` | Standard installer — adds to Start Menu and desktop |
+| `My Projects Setup 1.1.0.exe` | Standard installer — adds to Start Menu and desktop |
 | `MyProjects-portable.exe` | No install needed — run from anywhere, including a USB drive |
 
 ---
@@ -21,7 +21,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 ### Installer (recommended)
 
-1. Download `My Projects Setup 1.0.20.exe`
+1. Download `My Projects Setup 1.1.0.exe`
 2. Run it and follow the prompts
 3. Launch **My Projects** from the Start Menu or desktop shortcut
 
@@ -110,7 +110,7 @@ See `.env.example` in the repository for a full template. `.env` is gitignored �
 
 **Tasks** — standalone task list with tags, project links, goal links, owners, and completion tracking; task text, notes, and owner are directly editable inline. Tasks can be linked to annual goals the same way projects and notes are, and goal-linked tasks appear on the Goal Detail view and in exported reports.
 
-**Notes** — freeform notes organized in an arbitrary-depth folder tree, just like a normal file explorer: create nested folders, drag notes and folders between them (or drop on the root zone to un-file), and drag-reorder siblings — all changes save immediately and persist across reloads. Export options include a single note, a folder (recursively, including sub-folders) as `.zip`, or all notes as `.zip`. Also includes an OneNote-style sticky notes panel: jot into an active note, browse previously saved sticky notes stacked below it, and switch between them with one click. Sticky notes live outside the folder tree, so they're always visible from the main Notes list.
+**Notes** — rich-text notes with a full formatting toolbar (headings, bold, italic, underline, strikethrough, lists, blockquotes, code blocks, links) powered by a built-in Quill editor. Paste formatted content from Copilot, Word, OneNote, or any other source and formatting is preserved. Notes are organized in an arbitrary-depth folder tree, just like a normal file explorer: create nested folders, drag notes and folders between them (or drop on the root zone to un-file), and drag-reorder siblings — all changes save immediately and persist across reloads. Export options include a single note, a folder (recursively, including sub-folders) as `.zip`, or all notes as `.zip`. Also includes an OneNote-style sticky notes panel: jot into an active note, browse previously saved sticky notes stacked below it, and switch between them with one click. Sticky notes live outside the folder tree, so they're always visible from the main Notes list.
 
 **Profile** — your personal profile, generated and refreshed with AI assistance
 
@@ -126,7 +126,7 @@ See `.env.example` in the repository for a full template. `.env` is gitignored �
 
 **1:1s** — track one-on-one meeting notes pulled from your Second Brain vault, with an in-app "how this works" guide and the ability to mark open action items done or remove them
 
-**Settings** — personalize your name, team, org, and accent colour; optionally configure a Second Brain vault path (for 1:1 notes sync) and a OneNote export folder; manually check for app updates
+**Settings** — personalize your name, team, org, and accent colour; optionally configure a Second Brain vault path (for 1:1 notes sync) and a OneNote export folder; manually check for app updates. The desktop app includes spellcheck with a right-click context menu for correction suggestions and "Add to Dictionary".
 
 **Archive** — closed project snapshots with auto-generated closure reports
 
