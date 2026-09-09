@@ -24,6 +24,9 @@ uploads/
 Thumbs.db
 *.log
 
+# Claude Code project context — personal, not part of the public repo
+CLAUDE.md
+
 # Local-only helpers and duplicates — not part of the public repo
 Create Shortcut.ps1
 Launch Richards Projects - Shortcut.lnk
