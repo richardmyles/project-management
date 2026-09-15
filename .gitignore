@@ -5,10 +5,13 @@ node_modules/
 data/
 config.json
 .env
+.env.*
+!.env.example
 
 # Build artifacts
 dist/
 build/
+release/
 
 # Temp uploads
 uploads/
@@ -26,6 +29,7 @@ Thumbs.db
 
 # Claude Code project context — personal, not part of the public repo
 CLAUDE.md
+PROJECT.md
 
 # Local-only helpers and duplicates — not part of the public repo
 Create Shortcut.ps1
@@ -34,3 +38,10 @@ Launch Richards Projects.vbs
 scripts/export-onenote.ps1
 /richards-projects/
 notes-for-improvement.txt
+
+# Prevent accidental PII/credential leaks
+*.pem
+*.key
+*.p12
+*.pfx
+*.credentials
