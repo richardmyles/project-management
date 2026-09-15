@@ -88,7 +88,7 @@ function buildMilestone(release, tag) {
     target: releaseDate,
     status: "complete",
     notes: summary,
-    owner: "richardmyles",
+    owner: "",
     bullets,
     links: [{ label: "Release Notes", url: releaseUrl }],
   };

@@ -2636,7 +2636,7 @@ window.aiRisks=async()=>{
   });
   const journal=state.journal.slice(0,15);
   if(journal.length){ctx+="\nRECENT JOURNAL:\n";journal.forEach(j=>{const pr=state.projects.find(p=>p.id===j.project);ctx+=j.date+" ["+(pr?.shortName||"ALL")+"] "+j.type+": "+j.text+"\n";});}
-  const prompt="You are a project risk analyst reviewing a project portfolio for a pharma/manufacturing science team .\n\nReview the portfolio data below and identify the top 3–5 risks or concerns that need attention. For each risk:\n- Give it a short title\n- Rate severity: High / Medium / Low\n- Write 1–2 sentences explaining why it is a concern\n- Suggest one concrete next action\n\nBe specific and grounded in the data provided."+ctx+getPinnedNotesContext();
+  const prompt="You are a project risk analyst reviewing a project portfolio for a pharma/manufacturing science team.\n\nReview the portfolio data below and identify the top 3–5 risks or concerns that need attention. For each risk:\n- Give it a short title\n- Rate severity: High / Medium / Low\n- Write 1–2 sentences explaining why it is a concern\n- Suggest one concrete next action\n\nBe specific and grounded in the data provided."+ctx+getPinnedNotesContext();
   try{
     const r=await api("/api/claude",{method:"POST",body:JSON.stringify({prompt})});
     if(r.ok)out.innerHTML=esc(r.text).replace(/\n/g,"<br>");
