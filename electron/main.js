@@ -256,11 +256,19 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    // DATA_ROOT lets a user redirect their data folder (e.g. into a synced
+    // OneDrive/Dropbox location) without touching anything else. It's read
+    // from a .env placed at the FIXED default userData path, since that's
+    // the one location that doesn't itself depend on knowing dataRoot yet.
+    // Unset for everyone by default, so this has no effect unless opted in.
+    try { require("dotenv").config({ path: path.join(app.getPath("userData"), ".env") }); } catch (_) {}
+
     // ELECTRON_DATA_ROOT=local → use project dir (personal dev copies)
+    // DATA_ROOT → user-chosen folder (e.g. synced via OneDrive)
     // Default → use userData (distributable builds, portable .exe)
     const dataRoot = process.env.ELECTRON_DATA_ROOT === "local"
       ? path.join(__dirname, "..")
-      : app.getPath("userData");
+      : (process.env.DATA_ROOT || app.getPath("userData"));
     ensureData(dataRoot);
     process.env.APP_DATA_PATH = dataRoot;
     process.env.ELECTRON_APP = "1";

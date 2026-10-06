@@ -12,7 +12,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 | File | When to use |
 |------|-------------|
-| `My Projects Setup 1.1.2.exe` | Standard installer — adds to Start Menu and desktop |
+| `My Projects Setup 1.1.3.exe` | Standard installer — adds to Start Menu and desktop |
 | `MyProjects-portable.exe` | No install needed — run from anywhere, including a USB drive |
 
 ---
@@ -21,7 +21,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 ### Installer (recommended)
 
-1. Download `My Projects Setup 1.1.2.exe`
+1. Download `My Projects Setup 1.1.3.exe`
 2. Run it and follow the prompts
 3. Launch **My Projects** from the Start Menu or desktop shortcut
 
@@ -178,6 +178,16 @@ config.json              # Your name, team, org, accent colour
 ```
 
 No data is sent anywhere unless you explicitly use the AI features, which call the configured API endpoint.
+
+### Relocating your data folder (optional)
+
+By default your data lives in `%AppData%\my-projects`, which is local to this machine only — it won't follow you to a new computer. If you'd like your data to live somewhere else instead (for example, a OneDrive, Dropbox, or other synced folder, so it carries over automatically when you switch machines), create a `.env` file at `%AppData%\my-projects\.env` containing:
+
+```
+DATA_ROOT=C:\path\to\your\synced\folder
+```
+
+On next launch, the app creates (or reuses) its `data/` folder and `config.json` inside that location instead. This is entirely optional and off by default — nothing changes unless you add this file yourself.
 
 ---
 
