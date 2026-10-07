@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, Tray, nativeImage, dialog } = require("electron");
+const { app, BrowserWindow, Menu, shell, Tray, nativeImage, dialog, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
@@ -130,6 +130,27 @@ function ensureData(dataRoot) {
   });
 }
 
+// data-location.json lives at the FIXED default userData path (never moves), since it's the
+// bootstrap record of where the real dataRoot is — config.json itself lives *inside* dataRoot,
+// so it can't be used to answer this question before dataRoot is already decided.
+function getDataLocationFile() {
+  return path.join(app.getPath("userData"), "data-location.json");
+}
+
+function readDataLocationChoice() {
+  const fp = getDataLocationFile();
+  if (!fs.existsSync(fp)) return null; // never chosen yet -> first-run chooser should show
+  try {
+    return JSON.parse(fs.readFileSync(fp, "utf8"));
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeDataLocationChoice(dataRoot) {
+  fs.writeFileSync(getDataLocationFile(), JSON.stringify({ dataRoot: dataRoot || null }, null, 2));
+}
+
 function waitForServer(cb, tries = 40) {
   http.get(`http://localhost:${PORT}`, () => cb()).on("error", () => {
     if (tries > 0) setTimeout(() => waitForServer(cb, tries - 1), 100);
@@ -180,6 +201,7 @@ function createWindow() {
       contextIsolation: true,
       spellcheck: true,
       zoomFactor: 1.12,
+      preload: path.join(__dirname, "main-window-preload.js"),
     },
     show: true,
   });
@@ -240,6 +262,17 @@ function createWindow() {
   });
 }
 
+// Registered once (not inside createWindow) so re-creating the window never double-registers it.
+// Used by the Settings "Data Location" → "Change…" flow in the main window.
+ipcMain.handle("main-window:pick-folder", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory", "createDirectory"],
+    title: "Choose a new folder for My Projects data",
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  return result.filePaths[0];
+});
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.exit(0);
@@ -255,7 +288,7 @@ if (!gotLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     // DATA_ROOT lets a user redirect their data folder (e.g. into a synced
     // OneDrive/Dropbox location) without touching anything else. It's read
     // from a .env placed at the FIXED default userData path, since that's
@@ -263,12 +296,27 @@ if (!gotLock) {
     // Unset for everyone by default, so this has no effect unless opted in.
     try { require("dotenv").config({ path: path.join(app.getPath("userData"), ".env") }); } catch (_) {}
 
-    // ELECTRON_DATA_ROOT=local → use project dir (personal dev copies)
-    // DATA_ROOT → user-chosen folder (e.g. synced via OneDrive)
-    // Default → use userData (distributable builds, portable .exe)
-    const dataRoot = process.env.ELECTRON_DATA_ROOT === "local"
-      ? path.join(__dirname, "..")
-      : (process.env.DATA_ROOT || app.getPath("userData"));
+    // Precedence (highest to lowest):
+    //   1. ELECTRON_DATA_ROOT=local  -> dev copies, always use the project dir
+    //   2. DATA_ROOT env var         -> power-user override via .env (pre-dates the picker)
+    //   3. data-location.json       -> the choice made via the setup screen / Settings
+    //   4. app.getPath("userData")  -> default, unchanged until a choice is recorded
+    //
+    // Unlike the data folder itself, this choice doesn't need to be known before the window
+    // opens: the setup screen (shown inside the normal main window, alongside name/team/org)
+    // asks about it as one more field. If someone picks a custom folder there, the data already
+    // written to the default location gets copied over and the app restarts — see
+    // POST /api/data-location in server.js. So on a true first run, before any choice exists,
+    // we just proceed with the default; nothing is lost since ensureData() hasn't diverged yet.
+    let dataRoot;
+    if (process.env.ELECTRON_DATA_ROOT === "local") {
+      dataRoot = path.join(__dirname, "..");
+    } else if (process.env.DATA_ROOT) {
+      dataRoot = process.env.DATA_ROOT;
+    } else {
+      const choice = readDataLocationChoice();
+      dataRoot = (choice && choice.dataRoot) || app.getPath("userData");
+    }
     ensureData(dataRoot);
     process.env.APP_DATA_PATH = dataRoot;
     process.env.ELECTRON_APP = "1";
@@ -282,6 +330,10 @@ if (!gotLock) {
     if (dataRoot !== path.join(__dirname, "..")) {
       try { require("dotenv").config({ path: path.join(dataRoot, ".env") }); } catch (_) {}
     }
+
+    // Exposed so server.js can trigger a relaunch after a Settings-driven data-location
+    // change — mirrors the existing global.__appUpdater pattern used for auto-update status.
+    global.__appRestart = () => { app.isQuitting = true; app.relaunch(); app.quit(); };
 
     createTray();
     createWindow();

@@ -124,6 +124,63 @@ app.put("/api/config", (req, res) => {
   res.json({ ok: true, config: updated, vaultPathExists, oneNoteExportPathExists });
 });
 
+// ═══ DATA LOCATION ═══
+// Electron-only concept: ROOT is wherever electron/main.js resolved dataRoot to (userData by
+// default, or a user-chosen folder recorded in data-location.json). In plain `node server.js`
+// dev mode there's no Electron main process managing this, so these endpoints report that.
+app.get("/api/data-location", (req, res) => {
+  res.json({
+    currentPath: ROOT,
+    isElectron: !!process.env.ELECTRON_APP,
+    isDevLocal: ROOT === path.join(__dirname),
+  });
+});
+
+app.post("/api/data-location", (req, res) => {
+  if (!process.env.ELECTRON_APP) {
+    return res.status(400).json({ ok: false, error: "Data location can only be changed when running the installed app." });
+  }
+  const newPath = (req.body && req.body.newPath || "").trim();
+  if (!newPath) return res.status(400).json({ ok: false, error: "newPath is required." });
+  if (path.resolve(newPath) === path.resolve(ROOT)) {
+    return res.status(400).json({ ok: false, error: "That's already the current data location." });
+  }
+  try {
+    fs.mkdirSync(newPath, { recursive: true });
+    // Copy only the items this app actually manages — never the whole ROOT, since the default
+    // userData ROOT also holds Electron/Chromium's own cache/profile files (Cache, GPUCache,
+    // Local Storage, etc.) that must not be dragged along.
+    if (fs.existsSync(DATA)) {
+      fs.cpSync(DATA, path.join(newPath, "data"), { recursive: true });
+    }
+    if (fs.existsSync(CONFIG_FILE)) {
+      fs.cpSync(CONFIG_FILE, path.join(newPath, "config.json"));
+    }
+    const envFile = path.join(ROOT, ".env");
+    if (fs.existsSync(envFile)) {
+      fs.cpSync(envFile, path.join(newPath, ".env"));
+    }
+    // Record the choice at the fixed bootstrap location so the next launch picks it up.
+    // require("electron") here resolves to the real module (not the binary-path string you'd
+    // get outside Electron) because this file only reaches this branch inside the Electron
+    // main process — guarded above by the ELECTRON_APP check.
+    const electronApp = require("electron").app;
+    const dataLocationFile = path.join(electronApp.getPath("userData"), "data-location.json");
+    fs.writeFileSync(dataLocationFile, JSON.stringify({ dataRoot: newPath }, null, 2));
+    res.json({ ok: true, restartRequired: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post("/api/app/relaunch", (req, res) => {
+  if (typeof global.__appRestart !== "function") {
+    return res.status(400).json({ ok: false, error: "Restart is only available in the installed app." });
+  }
+  res.json({ ok: true });
+  setTimeout(() => global.__appRestart(), 300);
+});
+
 // ═══ STICKY NOTES MIGRATION ═══
 // One-time: fold the old single quicknote.json into the notes collection under a "Sticky Notes"
 // notebook, so existing jotted text isn't lost when the sticky-note panel became multi-note.

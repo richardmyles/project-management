@@ -12,7 +12,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 | File | When to use |
 |------|-------------|
-| `My Projects Setup 1.1.3.exe` | Standard installer — adds to Start Menu and desktop |
+| `My Projects Setup 1.2.0.exe` | Standard installer — adds to Start Menu and desktop |
 | `MyProjects-portable.exe` | No install needed — run from anywhere, including a USB drive |
 
 ---
@@ -21,7 +21,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 ### Installer (recommended)
 
-1. Download `My Projects Setup 1.1.3.exe`
+1. Download `My Projects Setup 1.2.0.exe`
 2. Run it and follow the prompts
 3. Launch **My Projects** from the Start Menu or desktop shortcut
 
@@ -43,6 +43,7 @@ On first launch a setup screen appears. Fill in:
 - **Team** — appears in exported Word documents
 - **Organisation** — appears in exported Word documents
 - **Accent colour** — sets the app's header and highlight colour
+- **Data Location** (optional) — see [Choosing where your data lives](#choosing-where-your-data-lives) below
 
 Click **Get Started**. Your settings are saved locally in `config.json` and the app opens to the main dashboard.
 
@@ -179,15 +180,16 @@ config.json              # Your name, team, org, accent colour
 
 No data is sent anywhere unless you explicitly use the AI features, which call the configured API endpoint.
 
-### Relocating your data folder (optional)
+### Choosing where your data lives
 
-By default your data lives in `%AppData%\my-projects`, which is local to this machine only — it won't follow you to a new computer. If you'd like your data to live somewhere else instead (for example, a OneDrive, Dropbox, or other synced folder, so it carries over automatically when you switch machines), create a `.env` file at `%AppData%\my-projects\.env` containing:
+On the first-run setup screen, below the usual name/team/org fields, there's a "Data Location" option:
 
-```
-DATA_ROOT=C:\path\to\your\synced\folder
-```
+- **Keep data on this computer** — the default, already selected. Data lives in `%AppData%\my-projects`, local to this machine only.
+- **Store in a folder I choose…** — pick any folder, for example one inside your OneDrive - Eli Lilly and Company\Documents. Your data then carries over automatically the next time you set up My Projects on a different computer, without doing anything else.
 
-On next launch, the app creates (or reuses) its `data/` folder and `config.json` inside that location instead. This is entirely optional and off by default — nothing changes unless you add this file yourself.
+You can change this later from **Settings → Data Location → Change…**. Your existing data is copied to the new folder (your old copy is left in place, untouched), then the app restarts to pick up the new location.
+
+**Power users:** you can also set this via an environment variable instead — create a `.env` file at `%AppData%\my-projects\.env` containing `DATA_ROOT=C:\path\to\your\synced\folder`. This takes priority over the Settings choice.
 
 ---
 
