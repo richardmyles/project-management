@@ -126,13 +126,16 @@ app.put("/api/config", (req, res) => {
 
 // ═══ DATA LOCATION ═══
 // Electron-only concept: ROOT is wherever electron/main.js resolved dataRoot to (userData by
-// default, or a user-chosen folder recorded in data-location.json). In plain `node server.js`
-// dev mode there's no Electron main process managing this, so these endpoints report that.
+// default, a user-chosen folder recorded in data-location.json, or a fixed project-folder path
+// when ELECTRON_DATA_ROOT=local). That last case isn't necessarily "dev" from the user's point
+// of view — e.g. richards-projects runs with ELECTRON_DATA_ROOT=local as its real, permanent
+// data store, not a throwaway test copy. So report the actual path either way and only disable
+// the folder-picker ("Change...") flow for it, rather than mislabeling it as a dev copy.
 app.get("/api/data-location", (req, res) => {
   res.json({
     currentPath: ROOT,
     isElectron: !!process.env.ELECTRON_APP,
-    isDevLocal: ROOT === path.join(__dirname),
+    isFixedByEnv: ROOT === path.join(__dirname),
   });
 });
 
