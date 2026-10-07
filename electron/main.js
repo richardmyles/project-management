@@ -297,25 +297,37 @@ if (!gotLock) {
     try { require("dotenv").config({ path: path.join(app.getPath("userData"), ".env") }); } catch (_) {}
 
     // Precedence (highest to lowest):
-    //   1. ELECTRON_DATA_ROOT=local  -> dev copies, always use the project dir
-    //   2. DATA_ROOT env var         -> power-user override via .env (pre-dates the picker)
-    //   3. data-location.json       -> the choice made via the setup screen / Settings
-    //   4. app.getPath("userData")  -> default, unchanged until a choice is recorded
+    //   1. DATA_ROOT env var         -> power-user override via .env; the one setting nothing
+    //                                    else can override, since it's set by editing a file
+    //                                    directly rather than through the UI.
+    //   2. data-location.json       -> an explicit choice made via the setup screen / Settings.
+    //                                    Takes priority over ELECTRON_DATA_ROOT=local on purpose:
+    //                                    a user clicking "Change..." in Settings expects it to
+    //                                    actually take effect, even on a source checkout that
+    //                                    normally defaults to its own project folder (e.g.
+    //                                    richards-projects, which runs as someone's real daily
+    //                                    driver, not a throwaway dev copy -- see CLAUDE.md).
+    //   3. ELECTRON_DATA_ROOT=local  -> dev-folder default, used only until a choice is made.
+    //   4. app.getPath("userData")  -> default, unchanged until a choice is recorded.
     //
-    // Unlike the data folder itself, this choice doesn't need to be known before the window
-    // opens: the setup screen (shown inside the normal main window, alongside name/team/org)
-    // asks about it as one more field. If someone picks a custom folder there, the data already
-    // written to the default location gets copied over and the app restarts — see
-    // POST /api/data-location in server.js. So on a true first run, before any choice exists,
-    // we just proceed with the default; nothing is lost since ensureData() hasn't diverged yet.
+    // This choice doesn't need to be known before the window opens: the setup screen (shown
+    // inside the normal main window, alongside name/team/org) asks about it as one more field.
+    // If someone picks a custom folder there, the data already written to the default location
+    // gets copied over and the app restarts — see POST /api/data-location in server.js. So on a
+    // true first run, before any choice exists, we just proceed with the default; nothing is
+    // lost since ensureData() hasn't diverged yet.
     let dataRoot;
-    if (process.env.ELECTRON_DATA_ROOT === "local") {
-      dataRoot = path.join(__dirname, "..");
-    } else if (process.env.DATA_ROOT) {
+    if (process.env.DATA_ROOT) {
       dataRoot = process.env.DATA_ROOT;
     } else {
       const choice = readDataLocationChoice();
-      dataRoot = (choice && choice.dataRoot) || app.getPath("userData");
+      if (choice && choice.dataRoot) {
+        dataRoot = choice.dataRoot;
+      } else if (process.env.ELECTRON_DATA_ROOT === "local") {
+        dataRoot = path.join(__dirname, "..");
+      } else {
+        dataRoot = app.getPath("userData");
+      }
     }
     ensureData(dataRoot);
     process.env.APP_DATA_PATH = dataRoot;

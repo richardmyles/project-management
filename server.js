@@ -125,17 +125,16 @@ app.put("/api/config", (req, res) => {
 });
 
 // ═══ DATA LOCATION ═══
-// Electron-only concept: ROOT is wherever electron/main.js resolved dataRoot to (userData by
-// default, a user-chosen folder recorded in data-location.json, or a fixed project-folder path
-// when ELECTRON_DATA_ROOT=local). That last case isn't necessarily "dev" from the user's point
-// of view — e.g. richards-projects runs with ELECTRON_DATA_ROOT=local as its real, permanent
-// data store, not a throwaway test copy. So report the actual path either way and only disable
-// the folder-picker ("Change...") flow for it, rather than mislabeling it as a dev copy.
+// Electron-only concept: ROOT is wherever electron/main.js resolved dataRoot to. Only the
+// DATA_ROOT env var (a power-user .env setting) is truly fixed -- it outranks everything,
+// including an explicit Settings choice, since changing it requires editing a file directly.
+// ELECTRON_DATA_ROOT=local is just the *default* until a choice is made (see main.js's
+// precedence comment) -- it's overridable via the picker, so it must NOT be reported as fixed.
 app.get("/api/data-location", (req, res) => {
   res.json({
     currentPath: ROOT,
     isElectron: !!process.env.ELECTRON_APP,
-    isFixedByEnv: ROOT === path.join(__dirname),
+    isFixedByEnv: !!process.env.DATA_ROOT,
   });
 });
 
@@ -159,8 +158,14 @@ app.post("/api/data-location", (req, res) => {
     if (fs.existsSync(CONFIG_FILE)) {
       fs.cpSync(CONFIG_FILE, path.join(newPath, "config.json"));
     }
+    // Only copy .env when the current ROOT is itself a data folder (userData or a previously
+    // chosen location) -- never when ROOT is a project/source checkout (ELECTRON_DATA_ROOT=local,
+    // e.g. richards-projects), since that .env holds dev-only settings (ELECTRON_DATA_ROOT=local
+    // itself, PORT, AI gateway config, ...) that would make no sense -- and would actively break
+    // the new location by telling it to redirect right back to the project folder.
+    const isProjectFolderRoot = ROOT === path.join(__dirname);
     const envFile = path.join(ROOT, ".env");
-    if (fs.existsSync(envFile)) {
+    if (!isProjectFolderRoot && fs.existsSync(envFile)) {
       fs.cpSync(envFile, path.join(newPath, ".env"));
     }
     // Record the choice at the fixed bootstrap location so the next launch picks it up.
