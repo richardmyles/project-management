@@ -12,7 +12,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 | File | When to use |
 |------|-------------|
-| `My Projects Setup 1.2.3.exe` | Standard installer — adds to Start Menu and desktop |
+| `My Projects Setup 1.2.4.exe` | Standard installer — adds to Start Menu and desktop |
 | `MyProjects-portable.exe` | No install needed — run from anywhere, including a USB drive |
 
 ---
@@ -21,7 +21,7 @@ Go to the [Releases](../../releases/latest) page and download one of:
 
 ### Installer (recommended)
 
-1. Download `My Projects Setup 1.2.3.exe`
+1. Download `My Projects Setup 1.2.4.exe`
 2. Run it and follow the prompts
 3. Launch **My Projects** from the Start Menu or desktop shortcut
 
@@ -74,7 +74,9 @@ Go to **Settings** and click the AI status line to open **AI Configuration**. Ch
 
 Secrets are stored locally in `config.json` and are never echoed back to the UI in plaintext — the field always shows a masked value (`••••••••abcd`) once saved.
 
-The same modal also has a **Coding Agent Command** and an optional **Git Bash Path**, used by the app's briefing/automation feature to launch a coding agent (defaults to `claude --dangerously-skip-permissions`). Adjust these if you use a different CLI or a non-default Git Bash install location.
+The same modal also has a **Coding Agent Command**, used by the app's briefing/automation feature to launch a coding agent (defaults to `claude --dangerously-skip-permissions`). Adjust this if you use a different CLI.
+
+Below that, a **Microsoft 365 Integration** section lets the Daily Briefing scan Outlook mail and Teams messages: click **Register MCP Server** to configure the `@softeria/ms-365-mcp-server` MCP server for Claude Code, then run a Daily Briefing — the first scan prints a device-code sign-in link in the briefing log.
 
 ### Environment variables (alternative)
 

@@ -1391,7 +1391,6 @@ function getAIConfig() {
     model: "",
     tokenCmd: "",
     codingAgentCmd: DEFAULT_CODING_AGENT_CMD,
-    gitBashPath: "",
     ...(cfg.aiConfig || {}),
   };
 }
@@ -1487,7 +1486,6 @@ app.get("/api/ai-config", (req, res) => {
     baseUrl: aiConfig.baseUrl,
     model: aiConfig.model,
     codingAgentCmd: aiConfig.codingAgentCmd || DEFAULT_CODING_AGENT_CMD,
-    gitBashPath: aiConfig.gitBashPath || "",
   });
 });
 
@@ -1503,7 +1501,6 @@ app.put("/api/ai-config", (req, res) => {
     model: body.model !== undefined ? body.model : existing.model,
     tokenCmd,
     codingAgentCmd: body.codingAgentCmd !== undefined ? body.codingAgentCmd : existing.codingAgentCmd,
-    gitBashPath: body.gitBashPath !== undefined ? body.gitBashPath : existing.gitBashPath,
   };
   const cfg = getConfig();
   const updated = { ...cfg, aiConfig: updatedAIConfig };
@@ -1520,7 +1517,6 @@ app.put("/api/ai-config", (req, res) => {
     baseUrl: updatedAIConfig.baseUrl,
     model: updatedAIConfig.model,
     codingAgentCmd: updatedAIConfig.codingAgentCmd,
-    gitBashPath: updatedAIConfig.gitBashPath,
   });
 });
 
@@ -2115,6 +2111,42 @@ Return JSON with ONLY the new items to add (omit any array that has nothing new)
   }
 });
 
+// ═══ MICROSOFT 365 MCP ═══
+// The Daily Briefing's coding-agent subprocess reads MCP server config from the same
+// ~/.claude.json that `claude mcp add` writes to — check that file directly rather than
+// shelling out to `claude mcp list` on every status poll.
+function getM365MCPStatus() {
+  const claudeConfigPath = path.join(process.env.USERPROFILE || process.env.HOME || "", ".claude.json");
+  const cfg = readJSON(claudeConfigPath, {});
+  const entry = (cfg.mcpServers || {}).ms365;
+  return { configured: !!entry, command: entry ? [entry.command, ...(entry.args || [])].join(" ") : null };
+}
+
+app.get("/api/mcp/m365-status", (req, res) => {
+  res.json(getM365MCPStatus());
+});
+
+app.post("/api/mcp/m365-register", (req, res) => {
+  const { spawn } = require("child_process");
+  // Registers the standard Microsoft 365 MCP server (@softeria/ms-365-mcp-server) in
+  // org mode (Teams/Outlook) under Claude Code's user-scoped MCP config. Requires the
+  // npm registry to be reachable — on networks that block registry.npmjs.org this will
+  // fail with an ECONNRESET-style error, which is surfaced verbatim below.
+  const proc = spawn("claude", ["mcp", "add", "ms365", "-s", "user", "--", "cmd", "/c", "npx -y @softeria/ms-365-mcp-server --org-mode"], {
+    shell: true,
+    windowsHide: true,
+    env: { ...process.env, HOME: process.env.USERPROFILE || process.env.HOME || "" },
+  });
+  let out = "";
+  proc.stdout?.on("data", d => out += d.toString());
+  proc.stderr?.on("data", d => out += d.toString());
+  proc.on("error", e => res.json({ ok: false, error: e.message }));
+  proc.on("exit", code => {
+    const status = getM365MCPStatus();
+    res.json({ ok: code === 0 && status.configured, code, output: out.trim(), status });
+  });
+});
+
 // ═══ DAILY BRIEFING ═══
 let _briefingStatus = { status: "idle", startedAt: null, completedAt: null, error: null };
 
@@ -2209,35 +2241,20 @@ app.post("/api/briefing/run", (req, res) => {
 
   const { spawn } = require("child_process");
   const logFile = path.join(BRIEFING_DIR, "run.log");
-
-  // Claude Code on Windows requires git-bash — spawn it directly
   const aiConfig = getAIConfig();
-  const bashCandidates = [
-    aiConfig.gitBashPath,
-    process.env.CLAUDE_CODE_GIT_BASH_PATH,
-    "C:\\Program Files\\Git\\bin\\bash.exe",
-    "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
-    "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
-  ].filter(Boolean);
-  const bashExe = bashCandidates.find(p => { try { return fs.existsSync(p); } catch(_) { return false; } });
 
-  if (!bashExe) {
-    try { fs.unlinkSync(tmpPrompt); } catch(_) {}
-    _briefingStatus = { status: "error", startedAt: _briefingStatus.startedAt, completedAt: new Date().toISOString(),
-      error: "Git Bash not found. Install Git for Windows (https://git-scm.com/downloads/win) or set the CLAUDE_CODE_GIT_BASH_PATH environment variable to your bash.exe path." };
-    return res.json({ ok: true, status: "running" });
-  }
-
-  // Write prompt to file and pass path as $1 — avoids Windows 32767-char command-line limit
-  // Claude reads from stdin (< "$1"), so the huge prompt never appears on the command line
-  // HOME must be set so claude finds ~/.claude/settings.json and MCP config
+  // Prompt is piped via stdin (not passed as a command-line arg) so it never hits
+  // Windows' 32767-char command-line limit. shell:true lets Node resolve the agent
+  // command (claude/claude.cmd/claude.exe) the same way a terminal would — no bash needed.
+  // HOME must be set so claude finds ~/.claude/settings.json and MCP config.
   const logStream = fs.createWriteStream(logFile, { flags: "w" });
   let proc;
   try {
-    proc = spawn(bashExe, ["-c", `${aiConfig.codingAgentCmd || DEFAULT_CODING_AGENT_CMD} < "$1"`, "--", tmpPrompt], {
+    proc = spawn(aiConfig.codingAgentCmd || DEFAULT_CODING_AGENT_CMD, {
+      shell: true,
       windowsHide: true,
       env: { ...process.env, HOME: process.env.USERPROFILE || process.env.HOME || "" },
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     });
   } catch(spawnErr) {
     logStream.end();
@@ -2245,6 +2262,7 @@ app.post("/api/briefing/run", (req, res) => {
     _briefingStatus = { status: "error", startedAt: _briefingStatus.startedAt, completedAt: new Date().toISOString(), error: "Failed to start briefing process: " + spawnErr.message };
     return res.json({ ok: true, status: "error" });
   }
+  fs.createReadStream(tmpPrompt).pipe(proc.stdin);
   proc.stdout.pipe(logStream);
   proc.stderr.pipe(logStream);
 
